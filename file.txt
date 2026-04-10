@@ -1,0 +1,31 @@
+fire_escape_system/
+│
+├── backend/                        # 【云端重度计算层】Python
+│   ├── data/                       # 静态数据与资产
+│   │   ├── map.png                # 原始 CAD 建筑底图
+│   │   └── M_mask.npy              # 预处理生成的 0/1 数学掩码矩阵
+│   │
+│   ├── core/                       # 核心算法引擎 (纯数学逻辑，无网络通信)
+│   │   ├── __init__.py
+│   │   ├── dstar_lite.py           # D* Lite 寻路管线 (状态升维、优先队列)
+│   │   └── fire_dynamics.py        # 火势演化引擎 (元胞自动机/高斯矩阵卷积)
+│   │
+│   ├── scripts/                    # 离线工具链
+│   │   └── map_processor.py        # OpenCV 图像清洗与矩阵生成脚本 (上一步写的)
+│   │
+│   ├── main.py                     # 后端入口：FastAPI/WebSocket 服务器，负责粘合 Core 与网络
+│   └── requirements.txt            # Python 依赖清单 (numpy, scipy, fastapi, uvicorn, opencv-python)
+│
+└── frontend/                       # 【边缘视觉渲染层】HTML5/JS
+    ├── index.html                  # 唯一的前端入口，定义 Canvas 容器和 UI 遮罩
+    ├── css/
+    │   └── style.css               # 样式文件 (深色大屏 UI 设计，保证 Canvas 满屏)
+    │
+    ├── assets/                     # 前端静态资源
+    │   └── map_bg.png              # 经过透明化处理的地图底图 (用于 Canvas 垫底)
+    │
+    └── js/                         # 模块化前端引擎 (严格采用 ES6 Modules 划分模块)
+        ├── main.js                 # 前端总控：双轨时钟引擎 (Logic Tick 与 Render Tick)
+        ├── network.js              # 通信模块：专职负责 WebSocket 握手、断线重连与 Payload 解析
+        ├── renderer.js             # 渲染管线：封装 Canvas API，管理拓扑层、火势层、硬件状态层
+        └── particles.js            # 物理引擎：火场混沌粒子与逃生流线粒子的运动学推算
