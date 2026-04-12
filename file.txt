@@ -7,8 +7,11 @@ fire_escape_system/
 │   │
 │   ├── core/                       # 核心算法引擎 (纯数学逻辑，无网络通信)
 │   │   ├── __init__.py
-│   │   ├── dstar_lite.py           # D* Lite 寻路管线 (状态升维、优先队列)
-│   │   └── fire_dynamics.py        # 火势演化引擎 (元胞自动机/高斯矩阵卷积)
+│   │   ├── dstar_engine.py         # D* Lite 寻路管线 (状态升维、优先队列)
+│   │   ├── fire_system.py          # 火势演化引擎 (元胞自动机/高斯矩阵卷积)
+│   │   ├── lbb_manager.py          # 小黑盒逻辑模拟
+│   │   ├── system_controller.py    # 调控管理器，作为dstar和fire_system的交互核心
+│   │   └── config.py               # 统一数值管理
 │   │
 │   ├── scripts/                    # 离线工具链
 │   │   └── map_processor.py        # OpenCV 图像清洗与矩阵生成脚本 (上一步写的)
@@ -24,8 +27,8 @@ fire_escape_system/
     ├── assets/                     # 前端静态资源
     │   └── map_bg.png              # 经过透明化处理的地图底图 (用于 Canvas 垫底)
     │
-    └── js/                         # 模块化前端引擎 (严格采用 ES6 Modules 划分模块)
-        ├── main.js                 # 前端总控：双轨时钟引擎 (Logic Tick 与 Render Tick)
-        ├── network.js              # 通信模块：专职负责 WebSocket 握手、断线重连与 Payload 解析
-        ├── renderer.js             # 渲染管线：封装 Canvas API，管理拓扑层、火势层、硬件状态层
-        └── particles.js            # 物理引擎：火场混沌粒子与逃生流线粒子的运动学推算
+    ├── main.js                  // 总控：管理基线同步与绘图调度 
+    ├── network.js               // 通信：解析 Payload，提取黑盒指令 Diff 
+    ├── renderer.js              // 渲染：负责绘制静态底图、热力场、HUD 界面 
+    ├── lbb_visual.js            // 新增：绘制小黑盒的探测圆、指示箭头与 SOS 状态
+    └── spline_engine.js         // 新增：负责将黑盒间的逻辑方向转化为平滑的路径链条
