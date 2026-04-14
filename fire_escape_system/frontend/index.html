@@ -5,87 +5,102 @@
     <title>火灾动态逃生推演系统</title>
     <style>
         body {
-            background-color: #111;
-            color: #eee;
+            background-color: #f0f2f5; /* 外部浅灰色背景 */
+            color: #333;
             margin: 0;
             display: flex;
-            height: 100vh;
-            overflow: hidden;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            /* 修改点：允许页面纵向滚动，并设置最小高度 */
+            min-height: 100vh; 
+            overflow-y: auto; 
+            font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
         }
 
         /* 左侧：物理推演画布区 */
         #sim-area {
             flex: 1;
             display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: #0a0a0c;
-            border-right: 1px solid #333;
+            justify-content: center; /* 水平居中 */
+            align-items: center;     /* 垂直居中 */
+            background-color: #e4e7eb;
+            border-right: 1px solid #ccc;
+            padding: 40px 0; /* 增加上下留白，方便滚动查看 */
         }
+
         #canvas-container {
             position: relative; 
-            height: 90vh; 
-            width: 90vh;
-            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
-            background-color: #1a1a1a; 
+            /* 保持画布比例，可根据需要调整大小 */
+            height: 85vh; 
+            width: 85vh;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            background-color: #ffffff; 
+            border-radius: 4px;
         }
+
         #canvas-container canvas {
             width: 100% !important;
             height: 100% !important;
+            border-radius: 4px;
         }
 
         /* 右侧：推演控制台 Dashboard */
         #dashboard {
             width: 320px;
-            background-color: #16161a;
+            background-color: #ffffff;
             display: flex;
             flex-direction: column;
-            padding: 20px;
+            padding: 24px;
             box-sizing: border-box;
             z-index: 10;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.05);
+            
+            /* 修改点：设置粘性定位，让控制面板跟随滚动不消失 */
+            position: sticky;
+            top: 0;
+            height: 100vh; 
         }
 
         .panel-title {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: #00e5ff;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            border-bottom: 1px solid #333;
-            padding-bottom: 10px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: #1a1a1a;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 12px;
         }
 
-        /* 图例系统 */
         .legend-group {
             margin-bottom: 30px;
         }
+
         .legend-item {
             display: flex;
             align-items: center;
-            margin-bottom: 12px;
-            font-size: 0.9rem;
+            margin-bottom: 14px;
+            font-size: 0.85rem;
+            color: #444;
         }
+
         .indicator {
             width: 14px;
             height: 14px;
             border-radius: 50%;
-            margin-right: 15px;
-            position: relative;
+            margin-right: 12px;
         }
-        .ind-safe { background: #00e5ff; box-shadow: 0 0 10px rgba(0, 229, 255, 0.8); }
-        .ind-smoke { background: #d000ff; box-shadow: 0 0 10px rgba(208, 0, 255, 0.8); }
-        .ind-trap { background: #ffaa00; box-shadow: 0 0 10px rgba(255, 170, 0, 0.8); }
-        .ind-fire { background: #ff003c; box-shadow: 0 0 10px rgba(255, 0, 60, 0.8); }
+
+        /* 状态颜色定义 */
+        .ind-safe { background: #2ecc71; box-shadow: 0 2px 6px rgba(46, 204, 113, 0.4); }
+        .ind-smoke { background: #9b59b6; box-shadow: 0 2px 6px rgba(155, 89, 182, 0.4); }
+        .ind-trap { background: #f1c40f; box-shadow: 0 2px 6px rgba(241, 196, 15, 0.4); }
+        .ind-fire { background: #e74c3c; box-shadow: 0 2px 6px rgba(231, 76, 60, 0.4); }
 
         .line-indicator {
             width: 25px;
             height: 4px;
             margin-right: 10px;
+            border-radius: 2px;
         }
-        .line-solid { background: #00e5ff; box-shadow: 0 0 8px rgba(0, 229, 255, 0.8); }
-        .line-dashed { background: repeating-linear-gradient(90deg, #ffaa00, #ffaa00 5px, transparent 5px, transparent 10px); }
+        .line-solid { background: #27ae60; }
+        .line-dashed { border-bottom: 3px dashed #f1c40f; }
 
         /* 控制按钮 */
         .control-group {
@@ -94,35 +109,66 @@
             gap: 12px;
             margin-top: auto;
         }
+
         button {
-            background-color: #2a2a35;
-            color: #fff;
-            border: 1px solid #444;
+            background-color: #fff;
+            color: #333;
+            border: 1px solid #ddd;
             padding: 12px;
-            font-size: 1rem;
+            font-size: 0.95rem;
+            font-weight: 600;
             cursor: pointer;
-            border-radius: 4px;
+            border-radius: 6px;
             transition: all 0.2s ease;
         }
-        button:hover { background-color: #3a3a45; border-color: #666; }
-        button.active-btn { background-color: #00e5ff; color: #000; font-weight: bold; }
+
+        button:hover {
+            background-color: #f8f9fa;
+            border-color: #bbb;
+        }
+
+        button.active-btn {
+            background-color: #27ae60;
+            color: #fff;
+            border-color: #219150;
+        }
         
-        /* 网络状态灯 */
+        /* 网络状态 */
         #net-status {
             margin-top: 20px;
             display: flex;
             align-items: center;
             font-size: 0.8rem;
-            color: #888;
+            color: #999;
         }
+
         .status-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
             margin-right: 8px;
-            background: #ff3333; /* 默认断开红灯 */
+            background: #e74c3c;
         }
-        .status-dot.online { background: #00ff66; box-shadow: 0 0 8px #00ff66; }
+
+        .status-dot.online {
+            background: #2ecc71;
+            box-shadow: 0 0 8px rgba(46, 204, 113, 0.6);
+        }
+
+        /* 美化滚动条 (滑块) */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #bbb;
+        }
 
     </style>
 </head>
@@ -135,17 +181,17 @@
         <div class="panel-title">System Dashboard</div>
         
         <div class="legend-group">
-            <div style="color:#aaa; margin-bottom:10px; font-size:0.85rem;">节点物理状态 (LBB Status)</div>
-            <div class="legend-item"><div class="indicator ind-safe"></div> 蓝 - 安全寻路</div>
-            <div class="legend-item"><div class="indicator ind-smoke"></div> 紫 - 烟雾预警</div>
-            <div class="legend-item"><div class="indicator ind-trap"></div> 黄 - 死胡同被困 (搜救信标)</div>
-            <div class="legend-item"><div class="indicator ind-fire"></div> 红 - 火灾吞噬 (搜救信标)</div>
+            <div style="color:#888; margin-bottom:12px; font-size:0.75rem; font-weight:bold; text-transform:uppercase;">节点物理状态</div>
+            <div class="legend-item"><div class="indicator ind-safe"></div> 正常/安全区域</div>
+            <div class="legend-item"><div class="indicator ind-smoke"></div> 烟雾覆盖区域</div>
+            <div class="legend-item"><div class="indicator ind-trap"></div> 黄色：被困区域</div>
+            <div class="legend-item"><div class="indicator ind-fire"></div> 红色：火灾核心区</div>
         </div>
 
         <div class="legend-group">
-            <div style="color:#aaa; margin-bottom:10px; font-size:0.85rem;"> 逃生路径</div>
-            <div class="legend-item"><div class="line-indicator line-solid"></div> 安全逃生路线 (避险)</div>
-            <div class="legend-item"><div class="line-indicator line-dashed"></div> 逆向救援指引 </div>
+            <div style="color:#888; margin-bottom:12px; font-size:0.75rem; font-weight:bold; text-transform:uppercase;">逃生路径指引</div>
+            <div class="legend-item"><div class="line-indicator line-solid"></div> 动态安全逃生路线</div>
+            <div class="legend-item"><div class="line-indicator line-dashed"></div> 逆向救援引导线</div>
         </div>
 
         <div class="control-group">

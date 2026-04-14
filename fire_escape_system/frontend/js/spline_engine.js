@@ -4,6 +4,13 @@ import { GlobalState } from './network.js';
 export class SplineEngine {
     constructor(cellSize) {
         this.cellSize = cellSize;
+        // 颜色映射表 - 严格对应原理图要求
+        this.statusColors = {
+            0: { path: '#27ae60', glow: 'rgba(39, 174, 96, 0.4)', node: '#2ecc71' }, // 绿色 (安全)
+            1: { path: '#c0392b', glow: 'rgba(192, 57, 43, 0.4)', node: '#e74c3c' }, // 红色 (火焰)
+            2: { path: '#d48d00', glow: 'rgba(212, 141, 0, 0.4)', node: '#f1c40f' }, // 暗黄 (被困)
+            3: { path: '#8e44ad', glow: 'rgba(142, 68, 173, 0.4)', node: '#9b59b6' }  // 紫色 (烟雾)
+        };
     }
 
     renderChains(ctx, timestamp) {
@@ -24,7 +31,7 @@ export class SplineEngine {
     }
 
     _drawFlowingPaths(ctx, timestamp) {
-        const flowOffset = - (timestamp / 50.0);
+        const flowOffset = - (timestamp / 40.0);
         const renderedEdges = new Set(); 
 
         GlobalState.topologyTree.forEach((_, startNodeId) => {
@@ -44,14 +51,7 @@ export class SplineEngine {
                 if (!renderedEdges.has(edgeKey)) {
                     renderedEdges.add(edgeKey);
 
-                    // --- 【修复关键】：在循环内部实时判定当前边的颜色 ---
-                    let pathColor, glowColor;
-                    const status = data.status;
-                    if (status === 1) { pathColor = '#ff3232'; glowColor = 'rgba(255, 50, 50, 0.6)'; }
-                    else if (status === 2) { pathColor = '#ffaa00'; glowColor = 'rgba(255, 170, 0, 0.6)'; }
-                    else if (status === 3) { pathColor = '#d000ff'; glowColor = 'rgba(208, 0, 255, 0.6)'; }
-                    else { pathColor = '#00e5ff'; glowColor = 'rgba(0, 229, 255, 0.6)'; }
-
+                    const colors = this.statusColors[data.status] || this.statusColors[0];
                     const [startX, startY] = this._getPixelCoord(currentId);
                     const [endX, endY] = this._getPixelCoord(nextId);
 
@@ -59,18 +59,19 @@ export class SplineEngine {
                     ctx.moveTo(startX, startY);
                     ctx.lineTo(endX, endY);
 
-                    ctx.shadowBlur = 12;
-                    ctx.shadowColor = glowColor;
-                    ctx.strokeStyle = pathColor;
-                    ctx.lineWidth = this.cellSize * 1.0;
+                    // 在白底上，阴影需要稍微深一点或减小范围以避免“脏”感
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = colors.glow;
+                    ctx.strokeStyle = colors.path;
+                    ctx.lineWidth = this.cellSize * 1.2;
 
                     // 逃生路线流光
-                    ctx.setLineDash([this.cellSize * 5, this.cellSize * 3]);
+                    ctx.setLineDash([this.cellSize * 4, this.cellSize * 4]);
                     ctx.lineDashOffset = flowOffset;
                     ctx.stroke();
 
                     // 指向箭头
-                    this._drawDirectionArrow(ctx, startX, startY, endX, endY, pathColor);
+                    this._drawDirectionArrow(ctx, startX, startY, endX, endY, colors.path);
 
                     ctx.shadowBlur = 0;
                     ctx.setLineDash([]);
@@ -103,23 +104,20 @@ export class SplineEngine {
     }
 
     _drawNodeIndicator(ctx, cx, cy, status) {
-        let coreColor, glowColor;
-        if (status === 1) { coreColor = '#ff003c'; glowColor = 'rgba(255, 0, 60, 0.8)'; }
-        else if (status === 2) { coreColor = '#ffaa00'; glowColor = 'rgba(255, 170, 0, 0.8)'; }
-        else if (status === 3) { coreColor = '#d000ff'; glowColor = 'rgba(208, 0, 255, 0.8)'; }
-        else { coreColor = '#00e5ff'; glowColor = 'rgba(0, 229, 255, 0.8)'; }
+        const colors = this.statusColors[status] || this.statusColors[0];
 
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = glowColor;
-        ctx.fillStyle = coreColor;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = colors.glow;
+        ctx.fillStyle = colors.node;
         ctx.beginPath();
-        ctx.arc(cx, cy, this.cellSize * 1.5, 0, Math.PI * 2);
+        ctx.arc(cx, cy, this.cellSize * 1.6, 0, Math.PI * 2);
         ctx.fill();
         
         ctx.shadowBlur = 0;
-        ctx.fillStyle = '#fff';
+        // 节点中心的高亮白点（模拟灯光效果）
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.beginPath();
-        ctx.arc(cx - this.cellSize * 0.3, cy - this.cellSize * 0.3, this.cellSize * 0.4, 0, Math.PI * 2);
+        ctx.arc(cx - this.cellSize * 0.4, cy - this.cellSize * 0.4, this.cellSize * 0.5, 0, Math.PI * 2);
         ctx.fill();
     }
 }

@@ -101,12 +101,11 @@ manager = ConnectionManager()
 
 async def logic_tick_loop(app: FastAPI):
     logger.info("云端 Logic Tick 引擎已启动...")
-    tick_interval = 0.1
+    tick_interval = 0.001
 
     while True:
         await asyncio.sleep(tick_interval)
         
-        # 状态机拦截：严格冻结物理推演
         if getattr(app.state, "is_paused", False):
             continue
 

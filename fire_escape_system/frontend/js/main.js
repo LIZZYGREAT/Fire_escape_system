@@ -68,17 +68,16 @@ class EngineConductor {
     }
 
     startRenderLoop() {
-        const loop = (timestamp) => {
-            this.renderer.clearMainLayer();
+    const loop = (timestamp) => {
+        this.renderer.clearMainLayer(timestamp); 
 
-            if (GlobalState.isBaselineSynced) {
-                this.splineEngine.renderChains(this.renderer.mainCtx, timestamp);
-            }
-
-            this.animationFrameId = requestAnimationFrame(loop);
-        };
-        requestAnimationFrame(loop);
-    }
+        if (GlobalState.isBaselineSynced) {
+            this.splineEngine.renderChains(this.renderer.mainCtx, timestamp);
+        }
+        this.animationFrameId = requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+}
 }
 
 window.addEventListener('DOMContentLoaded', () => {
