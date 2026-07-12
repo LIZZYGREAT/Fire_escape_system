@@ -2,3 +2,7 @@ pre-process.py
 show.py
 test.py
 info.txt
+*__pycache__/*
+preprocess/*
+*.pyc
+docs/*

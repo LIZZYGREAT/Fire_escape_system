@@ -4,7 +4,6 @@ import asyncio
 import json
 import logging
 import numpy as np
-from collections import deque
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,7 +30,7 @@ for bx, by in config.INITIAL_BLACK_BOXES:
     if 0 <= bx < WIDTH and 0 <= by < HEIGHT and mask_matrix[bx, by] == 1:
         black_boxes.append((bx, by))
 
-# --- 2. 仿真上下文管理器 (解耦重置逻辑) ---
+# --- 2. 仿真上下文管理器 (重新规划的依赖链) ---
 class SimulationContext:
     def __init__(self):
         self.tick_count = 0
@@ -46,13 +45,21 @@ class SimulationContext:
 
     def initialize_engines(self):
         logger.info("物理引擎容器初始化/重置中...")
-        self.dstar_engine = DStarLite(WIDTH, HEIGHT, mask_matrix, physical_exits)
-        self.fire_engine = FireDynamicsEngine(WIDTH, HEIGHT, mask_matrix)
-        self.lbb_manager = LBBManager(black_boxes, mask_matrix, physical_exits)
-        self.system_controller = SystemTickController(self.dstar_engine)
         
-        self.system_controller.dstar.compute_shortest_path()
-        logger.info("基线安全逃生网络已完全建立！")
+        # 1. 物理场必须最先装载
+        self.fire_engine = FireDynamicsEngine(WIDTH, HEIGHT, mask_matrix)
+        
+        # 2. 拓扑中间件构建欧几里得测距与倒排索引
+        self.lbb_manager = LBBManager(black_boxes, mask_matrix, physical_exits)
+        
+        # 3. 宏观图论引擎组网
+        self.dstar_engine = DStarLite(physical_exits)
+        
+        # 4. 控制器缝合与点火
+        self.system_controller = SystemTickController(self.dstar_engine, self.lbb_manager)
+        self.system_controller.initialize_baseline()
+        
+        logger.info("基线安全逃生网络及倒排索引机制已完全建立！")
         
         self.tick_count = 0
         self.ground_truth_fires = []
@@ -65,7 +72,7 @@ sim_context.initialize_engines()
 # --- 3. 异步应用流控与网络层 ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.is_paused = False  # 全局仿真拦截器
+    app.state.is_paused = False
     logic_task = asyncio.create_task(logic_tick_loop(app))
     yield
     logic_task.cancel()
@@ -101,7 +108,7 @@ manager = ConnectionManager()
 
 async def logic_tick_loop(app: FastAPI):
     logger.info("云端 Logic Tick 引擎已启动...")
-    tick_interval = 0.001
+    tick_interval = 1
 
     while True:
         await asyncio.sleep(tick_interval)
@@ -111,7 +118,7 @@ async def logic_tick_loop(app: FastAPI):
 
         sim_context.tick_count += 1
 
-        if sim_context.tick_count == 20:
+        if sim_context.tick_count == 10:
             for fx, fy, intensity in config.INITIAL_FIRES:
                 sim_context.ground_truth_fires.append((int(fx), int(fy), float(intensity)))
                 logger.warning(f"系统注入：按配置爆发物理火灾 ({fx},{fy})")
@@ -120,11 +127,13 @@ async def logic_tick_loop(app: FastAPI):
         if updates:
             sim_context.pending_risk_updates.extend(updates)
 
+        w_base_matrix = sim_context.fire_engine.current_risk_matrix
+
         if sim_context.pending_risk_updates:
-            await asyncio.to_thread(sim_context.system_controller.sync_dstar, sim_context.pending_risk_updates)
+            await asyncio.to_thread(sim_context.system_controller.sync_physical_to_graph, sim_context.pending_risk_updates, w_base_matrix)
             sim_context.pending_risk_updates.clear()
         
-        current_tree = await asyncio.to_thread(sim_context.system_controller.extract_topology_tree, black_boxes, sim_context.lbb_manager.topology_graph)
+        current_tree = await asyncio.to_thread(sim_context.system_controller.extract_topology_tree, black_boxes, w_base_matrix)
         
         tree_payload = {}
         for k, v in current_tree.items():
@@ -153,13 +162,14 @@ async def websocket_endpoint(websocket: WebSocket):
             if msg_type == "request_full_sync":
                 wall_coords = [[x, y] for x in range(WIDTH) for y in range(HEIGHT) if mask_matrix[x, y] == 0]
                 
-                current_tree = await asyncio.to_thread(sim_context.system_controller.extract_topology_tree, black_boxes, sim_context.lbb_manager.topology_graph)
+                w_base_matrix = sim_context.fire_engine.current_risk_matrix
+                current_tree = await asyncio.to_thread(sim_context.system_controller.extract_topology_tree, black_boxes, w_base_matrix)
                 sim_context.previous_topology_tree.update(current_tree)
                 
                 await websocket.send_text(json.dumps({
                     "type": "full_sync",
                     "wall_data": wall_coords,  
-                    "fire_data": [[x, y, float(sim_context.dstar_engine.w_base_matrix[x, y])] for x in range(WIDTH) for y in range(HEIGHT) if sim_context.dstar_engine.w_base_matrix[x, y] > config.W_BASE],
+                    "fire_data": [[x, y, float(w_base_matrix[x, y])] for x in range(WIDTH) for y in range(HEIGHT) if w_base_matrix[x, y] > config.W_BASE],
                     "topology_tree": current_tree,
                     "exits_data": physical_exits
                 }, separators=(',', ':')))
@@ -177,7 +187,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     app.state.is_paused = True
                     sim_context.initialize_engines()
                     wall_coords = [[x, y] for x in range(WIDTH) for y in range(HEIGHT) if mask_matrix[x, y] == 0]
-                    clean_tree = await asyncio.to_thread(sim_context.system_controller.extract_topology_tree, black_boxes, sim_context.lbb_manager.topology_graph)
+                    
+                    w_base_matrix = sim_context.fire_engine.current_risk_matrix
+                    clean_tree = await asyncio.to_thread(sim_context.system_controller.extract_topology_tree, black_boxes, w_base_matrix)
+                    
                     await manager.broadcast({
                         "type": "full_sync",
                         "wall_data": wall_coords,  
