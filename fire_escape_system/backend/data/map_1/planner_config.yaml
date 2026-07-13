@@ -1,0 +1,8 @@
+planner_mode: MULTI_SOURCE_REVERSE
+distance_weight: 1.0
+risk_weight: 8.0
+turn_penalty: 2.0
+uturn_penalty: 6.0
+fatal_risk_threshold: 85.0
+switch_margin: 0.15
+requires_calibration: true

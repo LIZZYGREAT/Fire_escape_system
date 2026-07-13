@@ -1,0 +1,9 @@
+mode: AUTO_WITH_MANUAL_REVIEW
+box_spacing_cells: 34
+max_boxes: 80
+mandatory_roles:
+- JUNCTION
+- CORNER
+- EXIT_GUIDE
+- REFUGE_GUIDE
+n_minus_one_validation: false

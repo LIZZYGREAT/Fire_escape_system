@@ -1,0 +1,15 @@
+map_id: test_floorplan_from_map2
+map_version: 1.0.0
+resolution_m_per_cell: 0.1
+coordinate_origin: top_left
+x_axis: east
+y_axis: south
+floors:
+- F01
+default_unit: meter
+grid_shape:
+- 512
+- 512
+source_image: map2.png
+generated_for: fire_escape_system
+automatic_result_requires_manual_review: true

@@ -1,210 +1,85 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>火灾动态逃生推演系统</title>
-    <style>
-        body {
-            background-color: #f0f2f5; /* 外部浅灰色背景 */
-            color: #333;
-            margin: 0;
-            display: flex;
-            /* 修改点：允许页面纵向滚动，并设置最小高度 */
-            min-height: 100vh; 
-            overflow-y: auto; 
-            font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
-        }
-
-        /* 左侧：物理推演画布区 */
-        #sim-area {
-            flex: 1;
-            display: flex;
-            justify-content: center; /* 水平居中 */
-            align-items: center;     /* 垂直居中 */
-            background-color: #e4e7eb;
-            border-right: 1px solid #ccc;
-            padding: 40px 0; /* 增加上下留白，方便滚动查看 */
-        }
-
-        #canvas-container {
-            position: relative; 
-            /* 保持画布比例，可根据需要调整大小 */
-            height: 85vh; 
-            width: 85vh;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-            background-color: #ffffff; 
-            border-radius: 4px;
-        }
-
-        #canvas-container canvas {
-            width: 100% !important;
-            height: 100% !important;
-            border-radius: 4px;
-        }
-
-        /* 右侧：推演控制台 Dashboard */
-        #dashboard {
-            width: 320px;
-            background-color: #ffffff;
-            display: flex;
-            flex-direction: column;
-            padding: 24px;
-            box-sizing: border-box;
-            z-index: 10;
-            box-shadow: -5px 0 15px rgba(0,0,0,0.05);
-            
-            /* 修改点：设置粘性定位，让控制面板跟随滚动不消失 */
-            position: sticky;
-            top: 0;
-            height: 100vh; 
-        }
-
-        .panel-title {
-            font-size: 1.1rem;
-            font-weight: 700;
-            margin-bottom: 24px;
-            color: #1a1a1a;
-            border-bottom: 2px solid #f0f0f0;
-            padding-bottom: 12px;
-        }
-
-        .legend-group {
-            margin-bottom: 30px;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 14px;
-            font-size: 0.85rem;
-            color: #444;
-        }
-
-        .indicator {
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            margin-right: 12px;
-        }
-
-        /* 状态颜色定义 */
-        .ind-safe { background: #2ecc71; box-shadow: 0 2px 6px rgba(46, 204, 113, 0.4); }
-        .ind-smoke { background: #9b59b6; box-shadow: 0 2px 6px rgba(155, 89, 182, 0.4); }
-        .ind-trap { background: #f1c40f; box-shadow: 0 2px 6px rgba(241, 196, 15, 0.4); }
-        .ind-fire { background: #e74c3c; box-shadow: 0 2px 6px rgba(231, 76, 60, 0.4); }
-
-        .line-indicator {
-            width: 25px;
-            height: 4px;
-            margin-right: 10px;
-            border-radius: 2px;
-        }
-        .line-solid { background: #27ae60; }
-        .line-dashed { border-bottom: 3px dashed #f1c40f; }
-
-        /* 控制按钮 */
-        .control-group {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-top: auto;
-        }
-
-        button {
-            background-color: #fff;
-            color: #333;
-            border: 1px solid #ddd;
-            padding: 12px;
-            font-size: 0.95rem;
-            font-weight: 600;
-            cursor: pointer;
-            border-radius: 6px;
-            transition: all 0.2s ease;
-        }
-
-        button:hover {
-            background-color: #f8f9fa;
-            border-color: #bbb;
-        }
-
-        button.active-btn {
-            background-color: #27ae60;
-            color: #fff;
-            border-color: #219150;
-        }
-        
-        /* 网络状态 */
-        #net-status {
-            margin-top: 20px;
-            display: flex;
-            align-items: center;
-            font-size: 0.8rem;
-            color: #999;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-right: 8px;
-            background: #e74c3c;
-        }
-
-        .status-dot.online {
-            background: #2ecc71;
-            box-shadow: 0 0 8px rgba(46, 204, 113, 0.6);
-        }
-
-        /* 美化滚动条 (滑块) */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #ccc;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #bbb;
-        }
-
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>智能消防逃生与搜救指示系统</title>
+    <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
-    <div id="sim-area">
-        <div id="canvas-container"></div>
-    </div>
-
-    <div id="dashboard">
-        <div class="panel-title">System Dashboard</div>
-        
-        <div class="legend-group">
-            <div style="color:#888; margin-bottom:12px; font-size:0.75rem; font-weight:bold; text-transform:uppercase;">节点物理状态</div>
-            <div class="legend-item"><div class="indicator ind-safe"></div> 正常/安全区域</div>
-            <div class="legend-item"><div class="indicator ind-smoke"></div> 烟雾覆盖区域</div>
-            <div class="legend-item"><div class="indicator ind-trap"></div> 黄色：被困区域</div>
-            <div class="legend-item"><div class="indicator ind-fire"></div> 红色：火灾核心区</div>
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-mark" aria-hidden="true">F</div>
+            <div>
+                <div class="brand-name">智能消防逃生与搜救指示系统</div>
+                <div class="brand-meta">FIRE ESCAPE · LIVE TOPOLOGY CONSOLE</div>
+            </div>
         </div>
+        <nav class="topnav" aria-label="系统页面">
+            <a class="nav-link active" href="./">实时推演</a>
+            <a class="nav-link editor-entry" href="./editor/">地图布点编辑器 <span>→</span></a>
+        </nav>
+    </header>
 
-        <div class="legend-group">
-            <div style="color:#888; margin-bottom:12px; font-size:0.75rem; font-weight:bold; text-transform:uppercase;">逃生路径指引</div>
-            <div class="legend-item"><div class="line-indicator line-solid"></div> 动态安全逃生路线</div>
-            <div class="legend-item"><div class="line-indicator line-dashed"></div> 逆向救援引导线</div>
-        </div>
+    <main id="app-shell">
+        <section id="sim-area" aria-label="火灾动态逃生推演地图">
+            <div class="canvas-frame">
+                <div class="canvas-label">
+                    <span>LIVE FLOOR MAP</span>
+                    <span class="live-pill"><i></i> 实时</span>
+                </div>
+                <div id="canvas-container"></div>
+            </div>
+        </section>
 
-        <div class="control-group">
-            <button id="btn-toggle">PAUSE 暂停演化</button>
-            <button id="btn-reset">RESET 重置物理沙盒</button>
-        </div>
+        <aside id="dashboard">
+            <div class="panel-kicker">SYSTEM DASHBOARD</div>
+            <h1>动态逃生态势</h1>
+            <p class="panel-intro">基于黑盒节点网络，持续同步火场风险与安全出口路径。</p>
 
-        <div id="net-status">
-            <div id="status-light" class="status-dot"></div>
-            <span id="status-text">DISCONNECTED</span>
-        </div>
-    </div>
-    
+            <div class="mode-switch" role="group" aria-label="指引视图">
+                <button id="btn-mode-evacuation" class="active" type="button">群众逃生</button>
+                <button id="btn-mode-rescue" type="button">消防搜救</button>
+            </div>
+            <p id="mode-note" class="mode-note">仅显示群众安全指引；SOS 节点应停止盲目突围并等待救援。</p>
+
+            <section class="dashboard-section">
+                <h2>节点物理状态</h2>
+                <div class="legend-grid">
+                    <div class="legend-item"><span class="indicator ind-safe"></span><div><strong>安全</strong><small>正常通行区域</small></div></div>
+                    <div class="legend-item"><span class="indicator ind-smoke"></span><div><strong>烟雾</strong><small>能见度下降</small></div></div>
+                    <div class="legend-item"><span class="indicator ind-sos"></span><div><strong>SOS</strong><small>停止盲目突围</small></div></div>
+                    <div class="legend-item"><span class="indicator ind-fire"></span><div><strong>火灾</strong><small>核心危险区域</small></div></div>
+                </div>
+            </section>
+
+            <section class="dashboard-section">
+                <h2>路径指引</h2>
+                <div class="path-legend"><span class="line-indicator line-solid"></span><div><strong>动态安全逃生路线</strong><small>流向当前可用出口</small></div></div>
+                <div class="path-legend"><span class="line-indicator line-dashed"></span><div><strong>逆向救援引导线</strong><small>危险降级链路</small></div></div>
+            </section>
+
+            <section class="quick-editor-card">
+                <div>
+                    <strong>需要编辑地图？</strong>
+                    <p>导入平面图，人工标注墙体、出口与黑盒部署点。</p>
+                </div>
+                <a href="./editor/">打开编辑器</a>
+            </section>
+
+            <div class="control-group">
+                <button id="btn-toggle">暂停演化</button>
+                <button id="btn-reset" class="secondary">重置物理沙盒</button>
+            </div>
+
+            <div id="net-status">
+                <span id="status-light" class="status-dot"></span>
+                <div><strong id="status-text">DISCONNECTED</strong><small>实时数据通道</small></div>
+            </div>
+        </aside>
+    </main>
+
     <script type="module" src="./js/main.js"></script>
 </body>
 </html>

@@ -1,8 +1,24 @@
-pre-process.py
-show.py
-test.py
-info.txt
+# Python
 *__pycache__/*
-preprocess/*
 *.pyc
-docs/*
+*.py[cod]
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local runtime output. Map source packages and documentation remain tracked.
+fire_escape_system/backend/runtime/
+fire_escape_system/backend/maps/*/drafts/
+fire_escape_system/backend/maps/*/compiled/
+
+# Legacy preprocessing scratch space
+preprocess/

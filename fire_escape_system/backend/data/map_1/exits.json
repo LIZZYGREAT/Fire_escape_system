@@ -1,0 +1,50 @@
+[
+  {
+    "exit_id": "E01",
+    "floor": "F01",
+    "grid_x": 491,
+    "grid_y": 4,
+    "world_x_m": 49.1,
+    "world_y_m": 0.4,
+    "enabled": true,
+    "exit_type": "GROUND_EXIT",
+    "source": "AUTO_TEST_GENERATOR",
+    "requires_manual_review": true
+  },
+  {
+    "exit_id": "E02",
+    "floor": "F01",
+    "grid_x": 508,
+    "grid_y": 275,
+    "world_x_m": 50.8,
+    "world_y_m": 27.5,
+    "enabled": true,
+    "exit_type": "GROUND_EXIT",
+    "source": "AUTO_TEST_GENERATOR",
+    "requires_manual_review": true
+  },
+  {
+    "exit_id": "E03",
+    "floor": "F01",
+    "grid_x": 491,
+    "grid_y": 507,
+    "world_x_m": 49.1,
+    "world_y_m": 50.7,
+    "enabled": true,
+    "exit_type": "GROUND_EXIT",
+    "source": "AUTO_TEST_GENERATOR",
+    "requires_manual_review": true
+  },
+  {
+    "exit_id": "E04",
+    "floor": "F01",
+    "grid_x": 4,
+    "grid_y": 491,
+    "world_x_m": 0.4,
+    "world_y_m": 49.1,
+    "enabled": true,
+    "exit_type": "GROUND_EXIT",
+    "source": "AUTO_TEST_GENERATOR",
+    "requires_manual_review": true
+  }
+]

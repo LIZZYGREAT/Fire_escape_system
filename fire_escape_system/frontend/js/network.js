@@ -5,7 +5,9 @@ export const GlobalState = {
     topologyTree: new Map(), 
     wallData: [],
     exitsData: [],
-    isBaselineSynced: false
+    isBaselineSynced: false,
+    // 默认面向群众，只消费 next；消防搜救模式由用户显式切换后才消费 rescue_next。
+    guidanceMode: 'evacuation'
 };
 
 class NetworkEngine {
@@ -133,4 +135,14 @@ class NetworkEngine {
     }
 }
 
-export const networkEngine = new NetworkEngine("ws://127.0.0.1:8000/ws");
+function resolveWebSocketUrl() {
+    // 与当前页面同源，部署到任意主机或 HTTPS 反向代理后无需改代码。
+    if (window.location.host) {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${protocol}//${window.location.host}/ws`;
+    }
+    // 直接以 file:// 打开页面时保留本地开发回退。
+    return 'ws://127.0.0.1:8000/ws';
+}
+
+export const networkEngine = new NetworkEngine(resolveWebSocketUrl());

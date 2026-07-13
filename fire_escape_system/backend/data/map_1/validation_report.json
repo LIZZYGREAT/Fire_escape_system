@@ -1,0 +1,15 @@
+{
+  "valid": true,
+  "errors": [],
+  "warnings": [],
+  "statistics": {
+    "height": 512,
+    "width": 512,
+    "wall_cells": 40810,
+    "walkable_cells": 221334,
+    "black_box_count": 80,
+    "exit_count": 4,
+    "refuge_count": 2,
+    "walkable_component_count": 1
+  }
+}

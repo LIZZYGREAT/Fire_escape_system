@@ -8,7 +8,7 @@ export class SplineEngine {
         this.statusColors = {
             0: { path: '#27ae60', glow: 'rgba(39, 174, 96, 0.4)', node: '#2ecc71' }, // 绿色 (安全)
             1: { path: '#c0392b', glow: 'rgba(192, 57, 43, 0.4)', node: '#e74c3c' }, // 红色 (火焰)
-            2: { path: '#d48d00', glow: 'rgba(212, 141, 0, 0.4)', node: '#f1c40f' }, // 暗黄 (被困)
+            2: { path: '#b91c1c', glow: 'rgba(185, 28, 28, 0.45)', node: '#dc2626' }, // 红色 (SOS，停止突围)
             3: { path: '#8e44ad', glow: 'rgba(142, 68, 173, 0.4)', node: '#9b59b6' }  // 紫色 (烟雾)
         };
     }
@@ -24,7 +24,7 @@ export class SplineEngine {
 
         GlobalState.topologyTree.forEach((value, key) => {
             const [cx, cy] = this._getPixelCoord(key);
-            this._drawNodeIndicator(ctx, cx, cy, value.status);
+            this._drawNodeIndicator(ctx, cx, cy, value.status, value.mode);
         });
 
         ctx.restore();
@@ -43,15 +43,25 @@ export class SplineEngine {
                 visited.add(currentId);
 
                 const data = GlobalState.topologyTree.get(currentId);
-                if (!data.next) break;
+                const isRescueView = GlobalState.guidanceMode === 'rescue';
+                const isSos = data.status === 2 || data.mode === 'SOS';
+                // 群众视图绝不读取 rescue_next；SOS 节点也不再绘制任何突围路径。
+                const nextId = isRescueView
+                    // SOS 的救援边先接到安全节点，随后沿该节点的公共安全链继续到出口。
+                    ? (data.rescue_next ?? data.rescueNext ?? data.next ?? null)
+                    : (isSos ? null : data.next);
+                if (!nextId) break;
 
-                const nextId = data.next;
-                const edgeKey = `${currentId}->${nextId}`;
+                const edgeKey = `${GlobalState.guidanceMode}:${currentId}->${nextId}`;
 
                 if (!renderedEdges.has(edgeKey)) {
                     renderedEdges.add(edgeKey);
 
-                    const colors = this.statusColors[data.status] || this.statusColors[0];
+                    const colors = isRescueView
+                        ? (data.status === 1
+                            ? { path: '#dc2626', glow: 'rgba(220, 38, 38, .45)' }
+                            : { path: '#ea580c', glow: 'rgba(234, 88, 12, .4)' })
+                        : (this.statusColors[data.status] || this.statusColors[0]);
                     const [startX, startY] = this._getPixelCoord(currentId);
                     const [endX, endY] = this._getPixelCoord(nextId);
 
@@ -66,7 +76,9 @@ export class SplineEngine {
                     ctx.lineWidth = this.cellSize * 1.2;
 
                     // 逃生路线流光
-                    ctx.setLineDash([this.cellSize * 4, this.cellSize * 4]);
+                    ctx.setLineDash(isRescueView
+                        ? [this.cellSize * 2, this.cellSize * 2.4]
+                        : [this.cellSize * 4, this.cellSize * 4]);
                     ctx.lineDashOffset = flowOffset;
                     ctx.stroke();
 
@@ -103,8 +115,9 @@ export class SplineEngine {
         return [x * this.cellSize + this.cellSize / 2, y * this.cellSize + this.cellSize / 2];
     }
 
-    _drawNodeIndicator(ctx, cx, cy, status) {
-        const colors = this.statusColors[status] || this.statusColors[0];
+    _drawNodeIndicator(ctx, cx, cy, status, mode = null) {
+        const isSos = status === 2 || mode === 'SOS';
+        const colors = this.statusColors[isSos ? 2 : status] || this.statusColors[0];
 
         ctx.shadowBlur = 10;
         ctx.shadowColor = colors.glow;
@@ -114,10 +127,18 @@ export class SplineEngine {
         ctx.fill();
         
         ctx.shadowBlur = 0;
-        // 节点中心的高亮白点（模拟灯光效果）
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.beginPath();
-        ctx.arc(cx - this.cellSize * 0.4, cy - this.cellSize * 0.4, this.cellSize * 0.5, 0, Math.PI * 2);
-        ctx.fill();
+        if (isSos) {
+            ctx.fillStyle = '#fff';
+            ctx.font = `800 ${Math.max(8, this.cellSize * 1.45)}px system-ui, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('SOS', cx, cy);
+        } else {
+            // 节点中心的高亮白点（模拟灯光效果）
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.beginPath();
+            ctx.arc(cx - this.cellSize * 0.4, cy - this.cellSize * 0.4, this.cellSize * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
 }

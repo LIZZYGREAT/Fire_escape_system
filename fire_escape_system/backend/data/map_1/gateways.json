@@ -1,0 +1,10 @@
+[
+  {
+    "gateway_id": "GW01",
+    "floor": "F01",
+    "grid_x": 256,
+    "grid_y": 256,
+    "enabled": true,
+    "source": "AUTO_TEST_GENERATOR"
+  }
+]

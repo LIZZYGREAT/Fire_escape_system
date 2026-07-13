@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "1.0.0",
+  "revision": 0,
+  "map": {
+    "id": "demo_building",
+    "name": "智能消防演示建筑",
+    "version": "1.0.0",
+    "imageDataUrl": null,
+    "width": 250,
+    "height": 250,
+    "metersPerPixel": 0.1,
+    "sourceMaskPath": "../../data/map_2/M_mask.npy",
+    "coordinateOrigin": "top_left",
+    "xAxis": "east",
+    "yAxis": "south"
+  },
+  "annotations": {
+    "strokes": {
+      "walkable": [],
+      "walls": []
+    },
+    "wallPixels": [],
+    "fireDomains": []
+  },
+  "entities": {
+    "doors": [],
+    "exits": [
+      {"id": "EXIT-001", "x": 240, "y": 124, "label": "东出口", "locked": true},
+      {"id": "EXIT-002", "x": 98, "y": 240, "label": "南出口", "locked": true},
+      {"id": "EXIT-003", "x": 58, "y": 10, "label": "北出口", "locked": true},
+      {"id": "EXIT-004", "x": 10, "y": 124, "label": "西出口", "locked": true}
+    ],
+    "refuges": [],
+    "stairs": [],
+    "gateways": [],
+    "blackBoxes": [
+      {"id":"BOX-001","x":220,"y":124,"label":"B001","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-002","x":190,"y":192,"label":"B002","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-003","x":190,"y":155,"label":"B003","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-004","x":190,"y":124,"label":"B004","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-005","x":190,"y":102,"label":"B005","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-006","x":190,"y":78,"label":"B006","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-007","x":190,"y":58,"label":"B007","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-008","x":170,"y":230,"label":"B008","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-009","x":170,"y":192,"label":"B009","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-010","x":159,"y":155,"label":"B010","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-011","x":159,"y":124,"label":"B011","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-012","x":159,"y":58,"label":"B012","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-013","x":132,"y":230,"label":"B013","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-014","x":132,"y":192,"label":"B014","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-015","x":132,"y":150,"label":"B015","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-016","x":132,"y":124,"label":"B016","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-017","x":132,"y":102,"label":"B017","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-018","x":125,"y":58,"label":"B018","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-019","x":98,"y":230,"label":"B019","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-020","x":98,"y":192,"label":"B020","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-021","x":98,"y":160,"label":"B021","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-022","x":98,"y":124,"label":"B022","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-023","x":98,"y":92,"label":"B023","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-024","x":98,"y":58,"label":"B024","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-025","x":58,"y":230,"label":"B025","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-026","x":58,"y":192,"label":"B026","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-027","x":58,"y":156,"label":"B027","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-028","x":58,"y":124,"label":"B028","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-029","x":58,"y":91,"label":"B029","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-030","x":58,"y":58,"label":"B030","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-031","x":58,"y":20,"label":"B031","locked":false,"mandatory":false,"source":"imported"},
+      {"id":"BOX-032","x":20,"y":124,"label":"B032","locked":false,"mandatory":false,"source":"imported"}
+    ]
+  },
+  "derived": {
+    "centerline": [],
+    "candidates": [],
+    "topology": {},
+    "validation": {},
+    "masks": {}
+  },
+  "settings": {
+    "brushSize": 6,
+    "coverageRadius": 5,
+    "visibleRadius": 8,
+    "maxBoxDistance": 8,
+    "snapDistance": 8,
+    "snapToCenterline": true,
+    "snapToGrid": false,
+    "gridSize": 5,
+    "coverageSampleStep": 4,
+    "candidateMergeDistance": 6,
+    "estimatedBoxCost": 1
+  },
+  "simulation": {
+    "ignitionTick": 10,
+    "tickIntervalSeconds": 1.0,
+    "initialFires": [
+      {"x": 60, "y": 57, "intensity": 100},
+      {"x": 68, "y": 125, "intensity": 100},
+      {"x": 170, "y": 210, "intensity": 100},
+      {"x": 90, "y": 198, "intensity": 100}
+    ]
+  }
+}

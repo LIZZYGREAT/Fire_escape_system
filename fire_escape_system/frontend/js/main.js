@@ -29,15 +29,34 @@ class EngineConductor {
     bindDashboardControls() {
         const btnToggle = document.getElementById('btn-toggle');
         const btnReset = document.getElementById('btn-reset');
+        const btnEvacuation = document.getElementById('btn-mode-evacuation');
+        const btnRescue = document.getElementById('btn-mode-rescue');
+        const modeNote = document.getElementById('mode-note');
+
+        const setGuidanceMode = (mode) => {
+            GlobalState.guidanceMode = mode;
+            btnEvacuation?.classList.toggle('active', mode === 'evacuation');
+            btnRescue?.classList.toggle('active', mode === 'rescue');
+            if (modeNote) {
+                modeNote.textContent = mode === 'rescue'
+                    ? '消防搜救视图：红/橙虚线为高风险救援链，仅供受训人员研判。'
+                    : '仅显示群众安全指引；SOS 节点应停止盲目突围并等待救援。';
+            }
+            document.dispatchEvent(new CustomEvent('guidanceModeChanged', { detail: { mode } }));
+        };
+
+        btnEvacuation?.addEventListener('click', () => setGuidanceMode('evacuation'));
+        btnRescue?.addEventListener('click', () => setGuidanceMode('rescue'));
+        setGuidanceMode('evacuation');
 
         btnToggle.addEventListener('click', () => {
             this.isPaused = !this.isPaused;
             if (this.isPaused) {
-                btnToggle.innerText = 'RESUME 恢复演化';
+                btnToggle.innerText = '恢复演化';
                 btnToggle.classList.add('active-btn');
                 networkEngine.sendControl('pause');
             } else {
-                btnToggle.innerText = 'PAUSE 暂停演化';
+                btnToggle.innerText = '暂停演化';
                 btnToggle.classList.remove('active-btn');
                 networkEngine.sendControl('resume');
             }
@@ -50,7 +69,7 @@ class EngineConductor {
             
             // UI恢复默认
             this.isPaused = false;
-            btnToggle.innerText = 'PAUSE 暂停演化';
+            btnToggle.innerText = '暂停演化';
             btnToggle.classList.remove('active-btn');
         });
     }

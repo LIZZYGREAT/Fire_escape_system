@@ -1,0 +1,35 @@
+{
+  "map_id": "test_floorplan_from_map2",
+  "map_version": "1.0.0",
+  "resolution_m_per_cell": 0.1,
+  "shape": [
+    512,
+    512
+  ],
+  "coordinate_system": {
+    "origin": "top_left",
+    "x_axis": "east",
+    "y_axis": "south"
+  },
+  "array_keys": [
+    "M_wall",
+    "M_walkable",
+    "M_fire_domain",
+    "M_material",
+    "M_clearance",
+    "M_box",
+    "M_exit",
+    "M_refuge"
+  ],
+  "entity_files": {
+    "exits": "exits.json",
+    "refuges": "refuges.json",
+    "black_boxes": "black_boxes.manual.json",
+    "doors": "doors.json",
+    "stairs": "stairs.json",
+    "vents": "vents.json",
+    "gateways": "gateways.json"
+  },
+  "validation_valid": true,
+  "warning": "自动生成测试地图，正式部署前必须人工复核墙体、门、出口和黑盒位置。"
+}

@@ -12,9 +12,9 @@ const PALETTE = {
     smokeDense: 'rgba(155, 89, 182, 0.40)',    
     smokeFringe: 'rgba(155, 89, 182, 0)',      
     
-    // 警戒区域暗金/深琥珀色
-    trappedDensity: 'rgba(218, 165, 32, 0.5)',   // Deep Goldenrod
-    trappedBorder: 'rgba(204, 136, 0, 0.9)'      // 深色琥珀边界
+    // SOS 区域：群众必须停止盲目突围并等待消防搜救
+    sosDensity: 'rgba(220, 38, 38, 0.28)',
+    sosBorder: 'rgba(185, 28, 28, 0.92)'
 };
 
 export class SceneRenderer {
@@ -227,7 +227,7 @@ export class SceneRenderer {
     _drawPeopleDensity(timestamp) {
         const densitySources = [];
         GlobalState.topologyTree.forEach((data, key) => {
-            if (data.status === 2) densitySources.push(key);
+            if (data.status === 2 || data.mode === 'SOS') densitySources.push(key);
         });
         
         if (densitySources.length === 0) return;
@@ -245,15 +245,15 @@ export class SceneRenderer {
             const radius = this.cellSize * gridRadius;
             
             const gradient = this.mainCtx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-            gradient.addColorStop(0, PALETTE.trappedDensity);
-            gradient.addColorStop(1, 'rgba(218, 165, 32, 0)'); 
+            gradient.addColorStop(0, PALETTE.sosDensity);
+            gradient.addColorStop(1, 'rgba(220, 38, 38, 0)');
             
             this.mainCtx.fillStyle = gradient;
             this.mainCtx.beginPath();
             this.mainCtx.arc(cx, cy, radius, 0, Math.PI * 2);
             this.mainCtx.fill();
 
-            this.mainCtx.strokeStyle = PALETTE.trappedBorder;
+            this.mainCtx.strokeStyle = PALETTE.sosBorder;
             this.mainCtx.lineWidth = 1;
             this.mainCtx.setLineDash([this.cellSize * 2, this.cellSize * 1.5]);
             this.mainCtx.lineDashOffset = dashOffset;

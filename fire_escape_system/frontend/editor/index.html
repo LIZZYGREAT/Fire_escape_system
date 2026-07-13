@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>地图人工布点编辑器</title>
+    <link rel="stylesheet" href="./css/editor.css">
+</head>
+<body>
+    <div class="editor-shell">
+        <header class="app-header">
+            <div class="brand-block">
+                <a class="back-link" href="../" aria-label="返回消防监控">←</a>
+                <div>
+                    <div class="brand-title">地图布点编辑器</div>
+                    <div class="brand-subtitle">Map annotation &amp; placement workspace</div>
+                </div>
+            </div>
+            <div class="project-fields" aria-label="地图项目属性">
+                <label>地图 ID<input id="map-id" type="text" value="default" autocomplete="off"></label>
+                <label>名称<input id="map-name" type="text" value="未命名地图" autocomplete="off"></label>
+                <label>版本<input id="map-version" type="text" value="1.0.0" autocomplete="off"></label>
+                <label>比例尺<input id="map-scale" type="number" min="0.000001" step="0.001" value="0.05"><span>m/px</span></label>
+            </div>
+            <div class="header-status">
+                <span id="save-state" class="save-state">本地草稿</span>
+                <a class="monitor-link" href="../">运行监控</a>
+            </div>
+        </header>
+
+        <nav class="action-bar" aria-label="项目操作">
+            <div class="action-group">
+                <button id="btn-import-image" class="action primary" title="导入 PNG 或 JPG">导入底图</button>
+                <button id="btn-load-default" class="action">加载现有地图</button>
+                <button id="btn-open-json" class="action">打开 JSON</button>
+                <button id="btn-save-json" class="action">保存 JSON</button>
+                <input id="image-input" type="file" accept="image/png,image/jpeg" hidden>
+                <input id="json-input" type="file" accept="application/json,.json" hidden>
+            </div>
+            <div class="action-group">
+                <button id="btn-save-server" class="action">保存到服务端</button>
+                <button id="btn-compile" class="action accent">编译中心线</button>
+                <button id="btn-candidates" class="action accent">生成候选点</button>
+                <button id="btn-validate" class="action danger-soft">校验地图</button>
+                <button id="btn-export" class="action dark">导出 ZIP</button>
+            </div>
+            <div class="action-group history-actions">
+                <button id="btn-undo" class="icon-action" title="撤销 Ctrl+Z" aria-label="撤销">↶</button>
+                <button id="btn-redo" class="icon-action" title="重做 Ctrl+Y" aria-label="重做">↷</button>
+                <button id="btn-fit" class="icon-action" title="适应窗口" aria-label="适应窗口">⌗</button>
+            </div>
+        </nav>
+
+        <main class="workspace">
+            <aside class="tool-rail" aria-label="标注工具">
+                <div class="tool-group">
+                    <div class="tool-group-label">浏览</div>
+                    <button class="tool active" data-tool="select" title="选择/拖动 (V)"><span>↖</span><small>选择</small></button>
+                    <button class="tool" data-tool="pan" title="平移 (H/空格)"><span>✥</span><small>平移</small></button>
+                    <button class="tool" data-tool="measure" title="按住拖动测距"><span>↔</span><small>测距</small></button>
+                </div>
+                <div class="tool-group">
+                    <div class="tool-group-label">区域</div>
+                    <button class="tool" data-tool="walkable" title="绘制可通行区域"><span class="swatch walkable"></span><small>通行区</small></button>
+                    <button class="tool" data-tool="wall" title="绘制墙体"><span class="swatch wall"></span><small>墙体</small></button>
+                </div>
+                <div class="tool-group">
+                    <div class="tool-group-label">设施</div>
+                    <button class="tool" data-tool="exit"><span>出</span><small>出口</small></button>
+                    <button class="tool" data-tool="refuge"><span>避</span><small>避难点</small></button>
+                    <button class="tool" data-tool="stair"><span>梯</span><small>楼梯</small></button>
+                    <button class="tool" data-tool="door"><span>门</span><small>门</small></button>
+                    <button class="tool" data-tool="gateway"><span>网</span><small>网关</small></button>
+                    <button class="tool box-tool" data-tool="blackBox"><span>B</span><small>黑盒</small></button>
+                </div>
+            </aside>
+
+            <section class="canvas-column">
+                <div id="canvas-stage" class="canvas-stage">
+                    <canvas id="map-canvas" tabindex="0" aria-label="地图标注画布"></canvas>
+                    <div id="empty-hint" class="empty-hint">
+                        <div class="empty-icon">▧</div>
+                        <strong>导入建筑平面图，或加载现有地图</strong>
+                        <span>支持 PNG / JPG；所有标注使用独立 JSON 状态保存</span>
+                    </div>
+                    <div id="busy-overlay" class="busy-overlay" hidden>
+                        <div class="spinner"></div><span id="busy-text">处理中…</span>
+                    </div>
+                </div>
+                <footer class="canvas-status">
+                    <span id="coordinate-status">x: —　y: —</span>
+                    <span id="real-coordinate-status">实际坐标: —</span>
+                    <span id="measurement-status">测距: —</span>
+                    <span class="status-spacer"></span>
+                    <span id="map-size-status">250 × 250 px</span>
+                    <span id="zoom-status">100%</span>
+                </footer>
+            </section>
+
+            <aside class="inspector">
+                <section class="panel">
+                    <div class="panel-heading"><h2>工具设置</h2></div>
+                    <div class="settings-grid">
+                        <label>笔刷直径 <span id="brush-size-value">12 px</span><input id="brush-size" type="range" min="1" max="80" step="1" value="12"></label>
+                        <label>覆盖半径 <div class="inline-input"><input id="coverage-radius" type="number" min="0.1" step="0.5" value="5"><span>m</span></div></label>
+                        <label class="check-row"><input id="snap-centerline" type="checkbox" checked><span>黑盒吸附中心线</span></label>
+                        <label class="check-row"><input id="snap-grid" type="checkbox"><span>吸附网格</span></label>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-heading"><h2>对象属性</h2><span id="selection-kind" class="panel-badge">未选择</span></div>
+                    <div id="property-panel" class="property-panel empty-panel">在画布上选择标注对象后编辑属性。</div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-heading"><h2>图层</h2><button id="btn-layers-all" class="text-button">全部显示</button></div>
+                    <div id="layer-list" class="layer-list">
+                        <label><input type="checkbox" data-layer="base" checked><span class="layer-dot base"></span>建筑底图</label>
+                        <label><input type="checkbox" data-layer="grid" checked><span class="layer-dot grid"></span>坐标网格</label>
+                        <label><input type="checkbox" data-layer="walkable" checked><span class="layer-dot walkable"></span>可通行区</label>
+                        <label><input type="checkbox" data-layer="walls" checked><span class="layer-dot walls"></span>墙体</label>
+                        <label><input type="checkbox" data-layer="semantic" checked><span class="layer-dot semantic"></span>出口 / 门 / 楼梯</label>
+                        <label><input type="checkbox" data-layer="centerline" checked><span class="layer-dot centerline"></span>中心线</label>
+                        <label><input type="checkbox" data-layer="candidates" checked><span class="layer-dot candidates"></span>候选点</label>
+                        <label><input type="checkbox" data-layer="blackBoxes" checked><span class="layer-dot blackBoxes"></span>部署黑盒</label>
+                        <label><input type="checkbox" data-layer="coverage" checked><span class="layer-dot coverage"></span>覆盖半径</label>
+                        <label><input type="checkbox" data-layer="validation" checked><span class="layer-dot validation"></span>校验标记</label>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-heading"><h2>候选点</h2><span id="candidate-count" class="panel-badge">0</span></div>
+                    <div class="panel-actions">
+                        <button id="btn-adopt-selected" class="small-action">采纳勾选</button>
+                        <button id="btn-adopt-all" class="small-action">采纳全部</button>
+                    </div>
+                    <div id="candidate-list" class="result-list empty-panel">生成候选点后可在此勾选并采纳。</div>
+                </section>
+
+                <section class="panel validation-panel">
+                    <div class="panel-heading"><h2>校验问题</h2><span id="issue-count" class="panel-badge neutral">未校验</span></div>
+                    <div id="validation-summary" class="validation-summary">尚未执行全图校验。</div>
+                    <div id="issue-list" class="result-list"></div>
+                </section>
+            </aside>
+        </main>
+    </div>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <script type="module" src="./js/main.js"></script>
+</body>
+</html>

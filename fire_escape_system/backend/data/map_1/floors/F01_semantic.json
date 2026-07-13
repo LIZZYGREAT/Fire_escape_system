@@ -1,0 +1,20 @@
+{
+  "floor_id": "F01",
+  "shape": [
+    512,
+    512
+  ],
+  "coordinate_origin": "top_left",
+  "x_axis": "east",
+  "y_axis": "south",
+  "layer_files": {
+    "base_image": "F01_base.png",
+    "wall_image": "F01_wall.png",
+    "walkable_image": "F01_walkable.png",
+    "material_array": "F01_material.npy"
+  },
+  "material_codes": {
+    "0": "FREE_SPACE",
+    "1": "WALL_NONCOMBUSTIBLE"
+  }
+}

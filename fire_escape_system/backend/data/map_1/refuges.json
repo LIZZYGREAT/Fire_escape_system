@@ -1,0 +1,26 @@
+[
+  {
+    "refuge_id": "R01",
+    "floor": "F01",
+    "grid_x": 197,
+    "grid_y": 446,
+    "world_x_m": 19.7,
+    "world_y_m": 44.6,
+    "capacity": 20,
+    "enabled": true,
+    "source": "AUTO_TEST_GENERATOR",
+    "requires_manual_review": true
+  },
+  {
+    "refuge_id": "R02",
+    "floor": "F01",
+    "grid_x": 193,
+    "grid_y": 175,
+    "world_x_m": 19.3,
+    "world_y_m": 17.5,
+    "capacity": 20,
+    "enabled": true,
+    "source": "AUTO_TEST_GENERATOR",
+    "requires_manual_review": true
+  }
+]

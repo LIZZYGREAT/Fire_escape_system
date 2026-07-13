@@ -1,0 +1,7 @@
+mvp_fire_domain_equals_walkable: true
+fire_max: 100.0
+local_growth_rate: 0.12
+spread_rate: 0.08
+smoke_model_enabled: false
+temperature_model_enabled: false
+requires_calibration: true

@@ -1,11 +1,19 @@
 # backend/core/fire_dynamics.py
+from typing import Optional
+
 import numpy as np
-from scipy.signal import convolve2d
 from scipy.ndimage import binary_dilation, gaussian_filter
+
 from . import config
 
 class FireDynamicsEngine:
-    def __init__(self, width: int, height: int, mask_matrix: np.ndarray):
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        mask_matrix: np.ndarray,
+        seed: Optional[int] = 0,
+    ):
         self.width = width
         self.height = height
         self.mask_matrix = mask_matrix
@@ -50,10 +58,72 @@ class FireDynamicsEngine:
         self.wall_adjacency_mask = dilated_walls & (self.mask_matrix == 1)
 
         # 空间异质性噪声底图
-        raw_noise = np.random.uniform(0.0, 1.0, size=(width, height))
+        # A stable default seed makes identical maps produce identical simulations.
+        # Passing ``None`` keeps non-deterministic fields available for experiments.
+        rng = np.random.default_rng(seed)
+        raw_noise = rng.uniform(0.0, 1.0, size=(width, height))
         smoothed_noise = gaussian_filter(raw_noise, sigma=3.0)
         min_n, max_n = smoothed_noise.min(), smoothed_noise.max()
         self.spatial_variance = 0.5 + 1.0 * (smoothed_noise - min_n) / (max_n - min_n + 1e-5)
+
+    def _diffuse_through_walkable(self, field: np.ndarray) -> np.ndarray:
+        """Diffuse without crossing walls or cutting diagonal corners.
+
+        A diagonal transfer is valid only when both adjacent orthogonal cells
+        are walkable. Building constraints are therefore applied to each
+        source-to-target transfer, rather than only masking after convolution.
+        """
+        diffused = np.zeros_like(field, dtype=np.float32)
+        walkable = self.mask_matrix == 1
+        size_x, size_y = field.shape
+
+        for kernel_x in range(3):
+            for kernel_y in range(3):
+                if kernel_x == 1 and kernel_y == 1:
+                    continue
+
+                weight = float(self.dynamic_kernel[kernel_x, kernel_y])
+                if weight <= 0.0:
+                    continue
+
+                dx = kernel_x - 1
+                dy = kernel_y - 1
+                source_x_start = max(0, -dx)
+                source_x_end = size_x - max(0, dx)
+                source_y_start = max(0, -dy)
+                source_y_end = size_y - max(0, dy)
+                if source_x_start >= source_x_end or source_y_start >= source_y_end:
+                    continue
+
+                target_x_start = source_x_start + dx
+                target_x_end = source_x_end + dx
+                target_y_start = source_y_start + dy
+                target_y_end = source_y_end + dy
+                source_slice = (
+                    slice(source_x_start, source_x_end),
+                    slice(source_y_start, source_y_end),
+                )
+                target_slice = (
+                    slice(target_x_start, target_x_end),
+                    slice(target_y_start, target_y_end),
+                )
+
+                allowed = walkable[source_slice] & walkable[target_slice]
+                if dx != 0 and dy != 0:
+                    side_x_slice = (
+                        slice(target_x_start, target_x_end),
+                        slice(source_y_start, source_y_end),
+                    )
+                    side_y_slice = (
+                        slice(source_x_start, source_x_end),
+                        slice(target_y_start, target_y_end),
+                    )
+                    allowed &= walkable[side_x_slice] & walkable[side_y_slice]
+
+                target_values = diffused[target_slice]
+                target_values[allowed] += field[source_slice][allowed] * weight
+
+        return diffused
 
     def _generate_wind_kernel(self) -> np.ndarray:
         """
@@ -111,7 +181,7 @@ class FireDynamicsEngine:
             excess_heat = self.heat_matrix - config.W_BASE
             
             # 引入动态风向矩阵进行对流扩散
-            diffused_heat = convolve2d(excess_heat, self.dynamic_kernel, mode='same', boundary='fill', fillvalue=0.0)
+            diffused_heat = self._diffuse_through_walkable(excess_heat)
             
             wall_multiplier = np.where(self.wall_adjacency_mask, 1.2, 1.0)
             self.heat_matrix += diffused_heat * self.spatial_variance * wall_multiplier * 0.35
@@ -141,7 +211,7 @@ class FireDynamicsEngine:
             self.heat_matrix = np.where(self.mask_matrix == 1, self.heat_matrix, config.W_BASE)
 
             # --- 轨道B：烟雾场演化与沉降 ---
-            diffused_smoke = convolve2d(self.smoke_matrix, self.dynamic_kernel, mode='same', boundary='fill', fillvalue=0.0)
+            diffused_smoke = self._diffuse_through_walkable(self.smoke_matrix)
             self.smoke_matrix += diffused_smoke * self.spatial_variance * 0.85
             
             # 【烟雾消散机制】：每一帧按系数沉降，无火灾后会慢慢飘散澄清
@@ -149,17 +219,6 @@ class FireDynamicsEngine:
             
             self.smoke_matrix = np.clip(self.smoke_matrix, 0.0, 100.0)
             self.smoke_matrix = np.where(self.mask_matrix == 1, self.smoke_matrix, 0.0)
-
-            # --- 绝对物理边界截断 ---
-            self.heat_matrix[:10, :] = config.W_BASE
-            self.heat_matrix[241:, :] = config.W_BASE
-            self.heat_matrix[:, :10] = config.W_BASE
-            self.heat_matrix[:, 241:] = config.W_BASE
-
-            self.smoke_matrix[:10, :] = 0.0
-            self.smoke_matrix[241:, :] = 0.0
-            self.smoke_matrix[:, :10] = 0.0
-            self.smoke_matrix[:, 241:] = 0.0
 
         # --- 形态学处理与突变过滤 ---
         core_fire = self.heat_matrix > 70.0
