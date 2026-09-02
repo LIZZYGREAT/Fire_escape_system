@@ -16,6 +16,7 @@ let activeOperations = 0;
 
 const dom = {
     mapId: byId('map-id'),
+    mapOptions: byId('map-options'),
     mapName: byId('map-name'),
     mapVersion: byId('map-version'),
     mapScale: byId('map-scale'),
@@ -148,6 +149,26 @@ function renderProperties(entity, reference) {
         onChange: (value) => editor.updateSelected({ y: Number(value) }, 'change entity y')
     });
 
+    const shapeFacilities = new Set(['stairs', 'elevators', 'fireHydrants', 'extinguishers']);
+    if (shapeFacilities.has(reference.collection)) {
+        addPropertySelect('形状', entity.shape || 'rectangle', [
+            ['rectangle', '矩形块'], ['circle', '圆形']
+        ], (value) => editor.updateSelected({ shape: value, pendingPlacement: true }, 'change facility shape'));
+        addPropertyField('宽度', entity.width ?? 16, {
+            type: 'number', step: '1',
+            onChange: (value) => editor.updateSelected({ width: Number(value), pendingPlacement: true }, 'change facility width')
+        });
+        addPropertyField('高度', entity.height ?? 16, {
+            type: 'number', step: '1',
+            onChange: (value) => editor.updateSelected({ height: Number(value), pendingPlacement: true }, 'change facility height')
+        });
+        const placement = editor.validateEntityPlacement(reference.collection, entity);
+        const placementNotice = document.createElement('div');
+        placementNotice.className = `placement-notice ${placement.valid ? 'valid' : 'invalid'}`;
+        placementNotice.textContent = placement.valid ? '当前位置可以放置' : placement.messages.join('；');
+        dom.propertyPanel.appendChild(placementNotice);
+    }
+
     if (reference.collection === 'doors') {
         addPropertySelect('门类型', entity.doorType || 'normal', [
             ['normal', '普通门'], ['fire', '防火门']
@@ -173,6 +194,19 @@ function renderProperties(entity, reference) {
     remove.textContent = '删除对象';
     remove.disabled = entity.locked;
     remove.addEventListener('click', () => editor.deleteSelected());
+    if (shapeFacilities.has(reference.collection)) {
+        const confirm = document.createElement('button');
+        const placement = editor.validateEntityPlacement(reference.collection, entity);
+        confirm.className = 'small-action confirm';
+        confirm.textContent = entity.pendingPlacement ? '确定放置' : '重新校验';
+        confirm.disabled = !placement.valid;
+        confirm.addEventListener('click', () => {
+            const result = editor.confirmSelectedPlacement();
+            if (!result.valid) notify(result.messages.join('；'), 'error');
+            else notify('设施位置与尺寸已确认', 'success');
+        });
+        actions.append(confirm);
+    }
     actions.append(lock, remove);
     dom.propertyPanel.appendChild(actions);
 }
@@ -213,6 +247,7 @@ function addPropertySelect(label, value, options, onChange) {
 function collectionLabel(collection) {
     return ({
         doors: '门', exits: '安全出口', refuges: '避难点', stairs: '楼梯',
+        elevators: '电梯', fireHydrants: '消防栓', extinguishers: '灭火器',
         gateways: 'LoRa 网关', blackBoxes: '黑盒'
     })[collection] || collection;
 }
@@ -329,6 +364,8 @@ document.querySelectorAll('[data-tool]').forEach((button) => {
     button.addEventListener('click', () => editor.setTool(button.dataset.tool));
 });
 
+document.querySelector('.action-bar')?.addEventListener('pointerdown', () => editor.clearMeasurement());
+
 dom.brushSize.addEventListener('input', () => {
     dom.brushSizeValue.textContent = `${dom.brushSize.value} px`;
     projectStore.updateTransient((project) => { project.settings.brushSize = Number(dom.brushSize.value); }, 'brush preview');
@@ -434,6 +471,9 @@ async function loadDefaultMap() {
                 ? await editorApi.loadDefault()
                 : await editorApi.load(requestedMapId);
             const project = normalizeProject(response);
+            if (!useDefault && project.map.id !== requestedMapId) {
+                throw new Error(`请求地图 ${requestedMapId}，服务端却返回了 ${project.map.id}`);
+            }
             projectStore.replaceProject(project, { reason: 'load existing map' });
             lastSavedRevision = project.revision;
             requestAnimationFrame(() => editor.fitToMap());
@@ -441,6 +481,20 @@ async function loadDefaultMap() {
         notify('现有地图已加载', 'success');
     } catch (error) {
         notify(`加载失败：${error.message}`, 'error');
+    }
+}
+
+async function populateMapOptions() {
+    try {
+        const response = await editorApi.list();
+        const mapIds = Array.isArray(response?.maps) ? response.maps : [];
+        dom.mapOptions.replaceChildren(...mapIds.map((mapId) => {
+            const option = document.createElement('option');
+            option.value = mapId;
+            return option;
+        }));
+    } catch {
+        // 地图列表只是输入辅助；失败时仍允许用户直接输入地图 ID。
     }
 }
 
@@ -513,7 +567,7 @@ async function generateCandidates() {
             let candidates;
             let skeletonPoints = null;
             try {
-                const response = unwrap(await editorApi.candidates(projectStore.getSnapshot())) ?? {};
+                const response = unwrap(await editorApi.optimize(projectStore.getSnapshot())) ?? {};
                 candidates = response.candidates ?? response.candidate_boxes ?? response;
                 skeletonPoints = response.skeleton_points ?? response.skeleton ?? response.centerline ?? null;
             } catch (error) {
@@ -526,7 +580,7 @@ async function generateCandidates() {
                 if (skeletonPoints) project.derived.centerline = { points: skeletonPoints };
             }, 'generate candidates');
         });
-        if (!usedFallback) notify('候选点已生成，可勾选后采纳', 'success');
+        if (!usedFallback) notify('智能布点已生成，推荐点已自动勾选', 'success');
     } catch (error) {
         notify(`候选点生成失败：${error.message}`, 'error');
     }
@@ -568,7 +622,13 @@ function adoptCandidates(all) {
     const candidates = projectStore.project.derived.candidates.filter((candidate) => all || candidate.selected);
     if (!candidates.length) return notify(all ? '当前没有候选点' : '请先勾选候选点', 'warning');
     let added = 0;
+    let replaced = 0;
     projectStore.commit((project) => {
+        const retained = project.entities.blackBoxes.filter((box) =>
+            box.source === 'manual' || Boolean(box.mandatory)
+        );
+        replaced = project.entities.blackBoxes.length - retained.length;
+        project.entities.blackBoxes = retained;
         candidates.forEach((candidate) => {
             const duplicate = project.entities.blackBoxes.some((box) => Math.hypot(box.x - candidate.x, box.y - candidate.y) < 2);
             if (duplicate) return;
@@ -580,7 +640,7 @@ function adoptCandidates(all) {
             added += 1;
         });
     }, 'adopt candidates');
-    notify(`已采纳 ${added} 个候选点${added < candidates.length ? '，重复位置已跳过' : ''}`, 'success');
+    notify(`已替换 ${replaced} 个旧自动/导入点，采纳 ${added} 个候选点${added < candidates.length ? '，重复位置已跳过' : ''}`, 'success');
 }
 
 async function exportZip() {
@@ -647,9 +707,16 @@ function localCompile(project) {
 function createLocalCandidates(project) {
     const candidates = [];
     const seen = [];
+    const metersPerPixel = Math.max(0.000001, Number(project.map.metersPerPixel) || 0.1);
+    const coverageRadius = (Number(project.settings.coverageRadius) || 5) / metersPerPixel;
+    const maxBoxDistance = (Number(project.settings.maxBoxDistance) || 8) / metersPerPixel;
+    const minSpacing = Math.max(
+        Number(project.settings.candidateMergeDistance) || 6,
+        Math.min(coverageRadius * 0.8, maxBoxDistance * 0.55)
+    );
     const add = (point, reason, mandatory = false) => {
         if (!Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) return;
-        if (seen.some((other) => Math.hypot(other.x - point.x, other.y - point.y) < 4)) return;
+        if (seen.some((other) => Math.hypot(other.x - point.x, other.y - point.y) < minSpacing)) return;
         const candidate = {
             id: `C${String(candidates.length + 1).padStart(3, '0')}`,
             x: Number(point.x), y: Number(point.y), reason, mandatory, selected: mandatory
@@ -660,9 +727,9 @@ function createLocalCandidates(project) {
     project.entities.exits.forEach((point) => add(point, '安全出口', true));
     project.entities.stairs.forEach((point) => add(point, '楼梯口', true));
     project.entities.refuges.forEach((point) => add(point, '避难点入口', true));
-    project.entities.doors.forEach((point) => add(point, point.doorType === 'fire' ? '防火门' : '门', point.doorType === 'fire'));
+    project.entities.doors.forEach((point) => add(point, point.doorType === 'fire' ? '防火门' : '门'));
 
-    const step = Math.max(8, project.settings.maxBoxDistance / project.map.metersPerPixel);
+    const step = Math.max(8, maxBoxDistance);
     const derivedPaths = project.derived.centerline?.points ? [] : extractCenterlinePaths(project.derived.centerline);
     const paths = derivedPaths.length
         ? derivedPaths
@@ -682,7 +749,7 @@ function createLocalCandidates(project) {
                 nextSample += step;
             }
             travelled += segment;
-            if (index < path.length - 1 && isCorner(previous, current, path[index + 1])) add(current, '走廊转弯', true);
+            if (index < path.length - 1 && isCorner(previous, current, path[index + 1])) add(current, '走廊转弯');
         }
         if (path.length > 1) add(path.at(-1), '走廊端点');
     });
@@ -799,7 +866,14 @@ function safeName(value) { return String(value || 'map').replace(/[<>:"/\\|?*\x0
 projectStore.subscribe((project) => updateProjectUI(project));
 updateProjectUI(projectStore.project);
 editor.setTool('select');
-requestAnimationFrame(() => editor.fitToMap());
+populateMapOptions();
+const initialMapId = new URLSearchParams(window.location.search).get('map');
+if (initialMapId) {
+    dom.mapId.value = initialMapId;
+    loadDefaultMap();
+} else {
+    requestAnimationFrame(() => editor.fitToMap());
+}
 
 window.addEventListener('beforeunload', (event) => {
     if (projectStore.project.revision === lastSavedRevision) return;

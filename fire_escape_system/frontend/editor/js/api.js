@@ -31,7 +31,7 @@ async function request(path, options = {}) {
 
     let response;
     try {
-        response = await fetch(path, { ...options, headers });
+        response = await fetch(path, { cache: 'no-store', ...options, headers });
     } catch (error) {
         throw new ApiError(`无法连接服务器：${error.message}`, 0, error);
     }
@@ -59,6 +59,10 @@ const jsonOptions = (method, project) => ({
 });
 
 export const editorApi = {
+    list() {
+        return requestJson('/api/maps');
+    },
+
     loadDefault() {
         return requestJson('/api/maps/default');
     },
@@ -82,6 +86,10 @@ export const editorApi = {
 
     candidates(project) {
         return requestJson('/api/placement/candidates', jsonOptions('POST', project));
+    },
+
+    optimize(project) {
+        return requestJson('/api/placement/optimize', jsonOptions('POST', project));
     },
 
     async exportZip(project) {

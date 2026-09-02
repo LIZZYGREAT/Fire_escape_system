@@ -138,6 +138,32 @@ class MapRepository:
                 for value in read_entities(name)
             ]
 
+        facility_path = package_dir / "facilities.auto.json"
+        try:
+            facility_data = (
+                json.loads(facility_path.read_text(encoding="utf-8"))
+                if facility_path.exists() else {}
+            )
+        except (OSError, ValueError) as exc:
+            raise MapRepositoryError(f"cannot load facilities.auto.json: {exc}") from exc
+
+        def facilities(name: str) -> list[dict]:
+            return [
+                {
+                    "id": str(value["id"]),
+                    "x": float(value["grid_x"]),
+                    "y": float(value["grid_y"]),
+                    "label": str(value.get("label", value["id"])),
+                    "locked": False,
+                    "source": "automatic",
+                    "requiresManualReview": bool(value.get("requires_manual_review", True)),
+                    "shape": str(value.get("shape", "circle")),
+                    "width": float(value.get("width", 16)),
+                    "height": float(value.get("height", 16)),
+                }
+                for value in facility_data.get(name, [])
+            ]
+
         boxes = read_entities("black_boxes")
         coverage_radius = float(boxes[0].get("sensor_radius_m", 5.0)) if boxes else 5.0
         visible_radius = float(boxes[0].get("visibility_radius_m", 8.0)) if boxes else 8.0
@@ -170,7 +196,10 @@ class MapRepository:
                 "doors": semantic("doors", "door_id"),
                 "exits": semantic("exits", "exit_id"),
                 "refuges": semantic("refuges", "refuge_id"),
-                "stairs": semantic("stairs", "stair_id"),
+                "stairs": semantic("stairs", "stair_id") + facilities("stairs"),
+                "elevators": facilities("elevators"),
+                "fireHydrants": facilities("fire_hydrants"),
+                "extinguishers": facilities("extinguishers"),
                 "gateways": semantic("gateways", "gateway_id"),
                 "blackBoxes": [
                     {
@@ -179,7 +208,13 @@ class MapRepository:
                         "y": float(value["grid_y"]),
                         "label": str(value.get("box_id", "")),
                         "locked": False,
-                        "mandatory": bool(value.get("mandatory", False)),
+                        # Some generated packages marked every trial point as
+                        # mandatory.  Only life-safety anchors are compulsory;
+                        # ordinary corner/junction imports must remain
+                        # removable by placement optimization.
+                        "mandatory": bool(value.get("mandatory", False))
+                        and str(value.get("role", "")).upper()
+                        in {"EXIT_GUIDE", "REFUGE_GUIDE", "STAIR_GUIDE"},
                         "source": "imported",
                     }
                     for value in boxes
@@ -188,6 +223,14 @@ class MapRepository:
             "settings": {
                 "coverageRadius": coverage_radius,
                 "visibleRadius": visible_radius,
+            },
+            "simulation": {
+                "ignitionTick": 3,
+                "tickIntervalSeconds": 1.0,
+                "initialFires": [
+                    {"x": 100, "y": 100, "intensity": 120.0},
+                    {"x": 400, "y": 350, "intensity": 110.0},
+                ],
             },
         }
         try:

@@ -26,8 +26,8 @@
         <section id="sim-area" aria-label="火灾动态逃生推演地图">
             <div class="canvas-frame">
                 <div class="canvas-label">
-                    <span>LIVE FLOOR MAP</span>
-                    <span class="live-pill"><i></i> 实时</span>
+                    <span><b id="runtime-map">—</b> · <span id="runtime-grid">—</span></span>
+                    <span class="live-pill"><i></i> 实时 · <b id="runtime-tick">TICK 0</b></span>
                 </div>
                 <div id="canvas-container"></div>
             </div>
@@ -38,6 +38,22 @@
             <h1>动态逃生态势</h1>
             <p class="panel-intro">基于黑盒节点网络，持续同步火场风险与安全出口路径。</p>
 
+            <section class="metric-grid" aria-label="火场实时指标">
+                <article><span>火焰网格</span><strong id="metric-fire">0</strong><small>HEAT ≥ 50</small></article>
+                <article><span>烟雾覆盖</span><strong id="metric-smoke">0</strong><small>SMOKE ≥ 5</small></article>
+                <article><span>最高热量</span><strong id="metric-heat">1.0</strong><small>MODEL INDEX</small></article>
+                <article><span>最高烟雾</span><strong id="metric-smoke-max">0.0%</strong><small>CONCENTRATION</small></article>
+            </section>
+
+            <section class="demo-controls" aria-label="演示设置">
+                <label><span>演示地图</span><select id="runtime-map-select"><option value="map_1">map_1</option></select></label>
+                <button id="btn-apply-map" type="button">切换地图</button>
+                <label><span>演化速度</span><select id="runtime-speed-select">
+                    <option value="0.5">0.5×</option><option value="1">1×</option>
+                    <option value="2" selected>2×</option><option value="4">4×</option><option value="8">8×</option>
+                </select></label>
+            </section>
+
             <div class="mode-switch" role="group" aria-label="指引视图">
                 <button id="btn-mode-evacuation" class="active" type="button">群众逃生</button>
                 <button id="btn-mode-rescue" type="button">消防搜救</button>
@@ -45,7 +61,9 @@
             <p id="mode-note" class="mode-note">仅显示群众安全指引；SOS 节点应停止盲目突围并等待救援。</p>
 
             <section class="dashboard-section">
-                <h2>节点物理状态</h2>
+                <h2>火灾与烟雾态势</h2>
+                <div class="hazard-scale smoke-scale"><span>轻烟</span><i></i><span>浓烟</span></div>
+                <div class="hazard-scale fire-scale"><span>受热</span><i></i><span>明火</span></div>
                 <div class="legend-grid">
                     <div class="legend-item"><span class="indicator ind-safe"></span><div><strong>安全</strong><small>正常通行区域</small></div></div>
                     <div class="legend-item"><span class="indicator ind-smoke"></span><div><strong>烟雾</strong><small>能见度下降</small></div></div>

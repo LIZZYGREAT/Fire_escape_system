@@ -12,9 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.health import router as health_router
+from app.api.hazards import router as hazards_router
 from app.api.maps import router as maps_router
 from app.api.websocket import router as websocket_router
 from app.services.connections import ConnectionManager
+from app.services.hazard_inputs import HazardObservationBuffer
 from app.services.map_compiler import MapCompiler
 from app.services.map_repository import MapRepository
 from app.services.simulation import SimulationRuntime
@@ -26,16 +28,17 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 async def _logic_tick_loop(app: FastAPI) -> None:
-    runtime = app.state.simulation_runtime
-    interval = runtime.project.simulation.tick_interval_seconds
-    logger.info("local simulation tick loop started for map %s", runtime.map_id)
+    logger.info("local simulation tick loop started")
     while True:
-        await asyncio.sleep(interval)
+        runtime = app.state.simulation_runtime
+        interval = runtime.project.simulation.tick_interval_seconds
+        await asyncio.sleep(interval / max(0.25, app.state.simulation_speed))
+        runtime = app.state.simulation_runtime
         if app.state.is_paused:
             continue
         async with app.state.simulation_lock:
             update = await asyncio.to_thread(runtime.tick_once)
-        if update["fire_diff"] or update["topology_tree"]:
+        if update["fire_diff"] or update["environment_diff"] or update["topology_tree"]:
             await app.state.connection_manager.broadcast(update)
 
 
@@ -46,7 +49,9 @@ def create_app(
 ) -> FastAPI:
     repository = MapRepository(maps_root or BACKEND_ROOT / "maps")
     compiler = MapCompiler(repository)
-    runtime = SimulationRuntime(repository, compiler)
+    available_maps = repository.list_map_ids()
+    runtime_map_id = "map_1" if "map_1" in available_maps else repository.default_map_id()
+    runtime = SimulationRuntime(repository, compiler, map_id=runtime_map_id)
     connection_manager = ConnectionManager()
 
     @asynccontextmanager
@@ -78,9 +83,12 @@ def create_app(
     application.state.map_compiler = compiler
     application.state.simulation_runtime = runtime
     application.state.connection_manager = connection_manager
+    application.state.hazard_observations = HazardObservationBuffer()
     application.state.simulation_lock = asyncio.Lock()
     application.state.is_paused = False
+    application.state.simulation_speed = 2.0
     application.include_router(health_router)
+    application.include_router(hazards_router)
     application.include_router(maps_router)
     application.include_router(websocket_router)
     # Register the catch-all static site last so API, docs and WebSocket routes

@@ -13,7 +13,6 @@ router = APIRouter(tags=["runtime"])
 async def websocket_endpoint(websocket: WebSocket) -> None:
     app = websocket.app
     manager = app.state.connection_manager
-    runtime = app.state.simulation_runtime
     await manager.connect(websocket)
     try:
         while True:
@@ -26,6 +25,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 )
                 continue
             message_type = payload.get("type")
+            runtime = app.state.simulation_runtime
             if message_type == "request_full_sync":
                 async with app.state.simulation_lock:
                     snapshot = await asyncio.to_thread(runtime.full_sync)
@@ -63,6 +63,34 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     await websocket.send_json(
                         {"type": "error", "code": "WS_E003", "message": str(exc)}
                     )
+            elif command == "set_speed":
+                try:
+                    speed = float(payload["speed"])
+                    if not 0.25 <= speed <= 8.0:
+                        raise ValueError("speed must be between 0.25 and 8")
+                    app.state.simulation_speed = speed
+                    await manager.broadcast({"type": "runtime_settings", "speed": speed})
+                except (KeyError, TypeError, ValueError) as exc:
+                    await websocket.send_json(
+                        {"type": "error", "code": "WS_E005", "message": str(exc)}
+                    )
+            elif command == "select_map":
+                map_id = str(payload.get("map_id", "")).strip()
+                app.state.is_paused = True
+                try:
+                    async with app.state.simulation_lock:
+                        replacement = await asyncio.to_thread(
+                            type(runtime), runtime.repository, runtime.compiler, map_id
+                        )
+                        app.state.simulation_runtime = replacement
+                        snapshot = await asyncio.to_thread(replacement.full_sync)
+                    await manager.broadcast(snapshot)
+                except Exception as exc:
+                    await websocket.send_json(
+                        {"type": "error", "code": "WS_E006", "message": str(exc)}
+                    )
+                finally:
+                    app.state.is_paused = False
             else:
                 await websocket.send_json(
                     {
@@ -76,4 +104,3 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     except Exception:
         manager.disconnect(websocket)
         raise
-

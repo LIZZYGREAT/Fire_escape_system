@@ -65,6 +65,10 @@ class MapEntity(APIModel):
     y: float
     label: str = ""
     locked: bool = False
+    shape: Literal["circle", "rectangle"] = "circle"
+    width: float = Field(default=16.0, gt=0, le=1024)
+    height: float = Field(default=16.0, gt=0, le=1024)
+    pending_placement: bool = False
 
 
 class DoorEntity(MapEntity):
@@ -82,6 +86,9 @@ class EntityCollection(APIModel):
     exits: list[MapEntity] = Field(default_factory=list)
     refuges: list[MapEntity] = Field(default_factory=list)
     stairs: list[MapEntity] = Field(default_factory=list)
+    elevators: list[MapEntity] = Field(default_factory=list)
+    fire_hydrants: list[MapEntity] = Field(default_factory=list)
+    extinguishers: list[MapEntity] = Field(default_factory=list)
     gateways: list[MapEntity] = Field(default_factory=list)
     black_boxes: list[BlackBoxEntity] = Field(default_factory=list)
 

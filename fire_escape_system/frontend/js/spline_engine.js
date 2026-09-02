@@ -83,7 +83,22 @@ export class SplineEngine {
                     ctx.stroke();
 
                     // 指向箭头
-                    this._drawDirectionArrow(ctx, startX, startY, endX, endY, colors.path);
+                    // Physical black boxes only support the four cardinal
+                    // commands. Keep the route geometry exact, but render the
+                    // device command as N/E/S/W instead of a diagonal arrow.
+                    const rescueDirection = Number(data.rescue_dir ?? data.rescueDir ?? -1);
+                    const commandDirection = isRescueView && rescueDirection >= 0
+                        ? rescueDirection
+                        : Number(data.dir ?? -1);
+                    this._drawDirectionArrow(
+                        ctx,
+                        startX,
+                        startY,
+                        endX,
+                        endY,
+                        colors.path,
+                        commandDirection
+                    );
 
                     ctx.shadowBlur = 0;
                     ctx.setLineDash([]);
@@ -93,8 +108,16 @@ export class SplineEngine {
         });
     }
 
-    _drawDirectionArrow(ctx, startX, startY, endX, endY, color) {
-        const angle = Math.atan2(endY - startY, endX - startX);
+    _drawDirectionArrow(ctx, startX, startY, endX, endY, color, direction = -1) {
+        const cardinalAngles = [-Math.PI / 2, 0, Math.PI / 2, Math.PI];
+        let angle = cardinalAngles[direction];
+        if (!Number.isFinite(angle)) {
+            const dx = endX - startX;
+            const dy = endY - startY;
+            angle = Math.abs(dx) >= Math.abs(dy)
+                ? (dx >= 0 ? 0 : Math.PI)
+                : (dy >= 0 ? Math.PI / 2 : -Math.PI / 2);
+        }
         const midX = startX + (endX - startX) * 0.7;
         const midY = startY + (endY - startY) * 0.7;
         const headLen = this.cellSize * 2.5;

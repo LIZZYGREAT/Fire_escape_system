@@ -14,10 +14,12 @@ _REASON_PRIORITY = {
     "EXIT": 1,
     "REFUGE": 1,
     "STAIR": 1,
-    "JUNCTION": 2,
-    "CORNER": 3,
-    "DEAD_END": 4,
-    "LONG_CORRIDOR": 5,
+    "IMPORTED": 2,
+    "ROOM_EXIT_GUIDE": 3,
+    "JUNCTION": 4,
+    "CORNER": 5,
+    "DEAD_END": 6,
+    "LONG_CORRIDOR": 7,
 }
 
 
@@ -92,6 +94,85 @@ class PlacementService:
             source_entity_id=source_entity_id,
         )
 
+    def _single_access_guides(
+        self,
+        walkable_yx: np.ndarray,
+        skeleton_yx: np.ndarray,
+        max_branch_length: float,
+    ) -> tuple[list[tuple[float, float]], set[tuple[int, int]]]:
+        """Return one guide for each short skeleton branch with one entrance.
+
+        A small enclosed room normally appears in the skeleton graph as one or
+        more short leaf branches ending at a junction near its doorway.  The
+        previous feature-by-feature strategy put boxes at the leaf, its corners
+        and the junction.  Here the branch is treated as one deployment region:
+        its feature points are suppressed and a single representative guide is
+        offered to the optimizer.
+
+        This is deliberately conservative.  Long dead-end corridors are not
+        classified as rooms; the normal coverage pass is still responsible for
+        placing as many devices as their length requires.
+        """
+
+        coordinates, adjacency = self.skeleton_extractor.graph(
+            skeleton_yx,
+            walkable_yx,
+        )
+        if not coordinates:
+            return [], set()
+
+        degree = {index: len(adjacency.get(index, [])) for index in range(len(coordinates))}
+        branches: list[tuple[tuple[float, float], set[tuple[int, int]]]] = []
+        visited_edges: set[tuple[int, int]] = set()
+
+        for leaf in sorted(index for index, value in degree.items() if value == 1):
+            path = [leaf]
+            previous: Optional[int] = None
+            current = leaf
+            length = 0.0
+
+            while True:
+                options = [
+                    (neighbor, cost)
+                    for neighbor, cost in adjacency.get(current, [])
+                    if neighbor != previous
+                ]
+                if not options:
+                    break
+                neighbor, cost = options[0]
+                edge = tuple(sorted((current, neighbor)))
+                if edge in visited_edges:
+                    break
+                visited_edges.add(edge)
+                length += cost
+                previous, current = current, neighbor
+                path.append(current)
+                if degree.get(current, 0) != 2 or length > max_branch_length:
+                    break
+
+            # A branch ending at a junction has exactly one way back to the
+            # main route.  Leaf-to-leaf lines and long corridors are excluded.
+            if degree.get(current, 0) < 3 or length > max_branch_length or len(path) < 3:
+                continue
+
+            cumulative = 0.0
+            target = length * 0.5
+            guide_index = path[0]
+            for first, second in zip(path, path[1:]):
+                first_point = coordinates[first]
+                second_point = coordinates[second]
+                cumulative += _distance(first_point, second_point)
+                guide_index = second
+                if cumulative >= target:
+                    break
+
+            suppressed = {coordinates[index] for index in path[:-1]}
+            branches.append((coordinates[guide_index], suppressed))
+
+        return [guide for guide, _ in branches], set().union(
+            *(suppressed for _, suppressed in branches)
+        ) if branches else set()
+
     def generate_candidates(
         self,
         project: EditorProject,
@@ -99,10 +180,34 @@ class PlacementService:
         skeleton_yx: np.ndarray,
     ) -> list[CandidateBox]:
         merge_distance = project.settings.candidate_merge_distance
+        meters_per_pixel = project.map.meters_per_pixel
+        coverage_radius_px = project.settings.coverage_radius / meters_per_pixel
+        max_box_distance_px = project.settings.max_box_distance / meters_per_pixel
+        # A six-pixel merge threshold was too small for real floor plans and
+        # allowed several feature pixels around one junction to become devices.
+        # Scale automatic suppression with the configured physical coverage,
+        # while retaining the explicit threshold as a lower bound.
+        automatic_spacing = max(
+            merge_distance,
+            min(coverage_radius_px * 0.8, max_box_distance_px * 0.55),
+        )
         raw: list[tuple[float, float, str, bool, bool, Optional[str]]] = []
 
         for box in project.entities.black_boxes:
-            raw.append((box.x, box.y, "MANUAL", box.mandatory, True, box.id))
+            # Re-running optimization must replace its previous output instead
+            # of pinning every old automatic box as a new manual requirement.
+            if box.source == "automatic":
+                continue
+            # Imported packages often contain a dense set of generated trial
+            # points.  Keep their mandatory anchors, but let optimization prune
+            # ordinary imported points.  A point explicitly placed in the
+            # editor remains pinned as a genuine manual requirement.
+            if box.source == "imported":
+                raw.append(
+                    (box.x, box.y, "IMPORTED", box.mandatory, box.mandatory, box.id)
+                )
+            else:
+                raw.append((box.x, box.y, "MANUAL", box.mandatory, True, box.id))
         for reason, entities in (
             ("EXIT", project.entities.exits),
             ("REFUGE", project.entities.refuges),
@@ -111,8 +216,24 @@ class PlacementService:
             for entity in entities:
                 raw.append((entity.x, entity.y, reason, True, True, entity.id))
 
+        single_access_limit = max(
+            12.0,
+            min(max_box_distance_px * 1.25, coverage_radius_px * 1.5),
+        )
+        room_guides, single_access_points = self._single_access_guides(
+            walkable_yx,
+            skeleton_yx,
+            single_access_limit,
+        )
+        for x, y in room_guides:
+            raw.append((x, y, "ROOM_EXIT_GUIDE", False, False, None))
+
         for x, y, reason in self.skeleton_extractor.classify_features(skeleton_yx):
-            raw.append((x, y, reason, reason in {"JUNCTION", "CORNER"}, False, None))
+            if (x, y) in single_access_points:
+                continue
+            # Corners and junctions are useful candidates, not compulsory
+            # installations.  Coverage optimization decides which are needed.
+            raw.append((x, y, reason, False, False, None))
 
         raw.sort(
             key=lambda item: (
@@ -125,11 +246,17 @@ class PlacementService:
         selected_raw: list[tuple[float, float, str, bool, bool, Optional[str]]] = []
         for item in raw:
             x, y, reason, mandatory, selected, entity_id = item
+            threshold = merge_distance if reason == "MANUAL" else automatic_spacing
             nearby_index = next(
                 (
                     idx
                     for idx, existing in enumerate(selected_raw)
-                    if _distance((x, y), (existing[0], existing[1])) < merge_distance
+                    if _distance((x, y), (existing[0], existing[1])) < threshold
+                    and line_is_walkable(
+                        walkable_yx,
+                        (x, y),
+                        (existing[0], existing[1]),
+                    )
                 ),
                 None,
             )
@@ -152,9 +279,6 @@ class PlacementService:
         # Fill long corridor gaps.  Euclidean proximity only suppresses a point
         # when a direct walkable line exists, so parallel corridors across a wall
         # remain independently covered.
-        max_box_distance_px = (
-            project.settings.max_box_distance / project.map.meters_per_pixel
-        )
         interval = max(4.0, max_box_distance_px * 0.75)
         skeleton_points = [(int(x), int(y)) for y, x in np.argwhere(skeleton_yx)]
         scan_step = max(1, int(interval // 3))

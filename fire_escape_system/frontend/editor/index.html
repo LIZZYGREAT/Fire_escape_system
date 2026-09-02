@@ -18,7 +18,7 @@
                 </div>
             </div>
             <div class="project-fields" aria-label="地图项目属性">
-                <label>地图 ID<input id="map-id" type="text" value="default" autocomplete="off"></label>
+                <label>地图 ID<input id="map-id" type="text" value="default" list="map-options" autocomplete="off"><datalist id="map-options"></datalist></label>
                 <label>名称<input id="map-name" type="text" value="未命名地图" autocomplete="off"></label>
                 <label>版本<input id="map-version" type="text" value="1.0.0" autocomplete="off"></label>
                 <label>比例尺<input id="map-scale" type="number" min="0.000001" step="0.001" value="0.05"><span>m/px</span></label>
@@ -70,6 +70,9 @@
                     <button class="tool" data-tool="exit"><span>出</span><small>出口</small></button>
                     <button class="tool" data-tool="refuge"><span>避</span><small>避难点</small></button>
                     <button class="tool" data-tool="stair"><span>梯</span><small>楼梯</small></button>
+                    <button class="tool" data-tool="elevator"><span>电</span><small>电梯</small></button>
+                    <button class="tool" data-tool="fireHydrant"><span>栓</span><small>消防栓</small></button>
+                    <button class="tool" data-tool="extinguisher"><span>灭</span><small>灭火器</small></button>
                     <button class="tool" data-tool="door"><span>门</span><small>门</small></button>
                     <button class="tool" data-tool="gateway"><span>网</span><small>网关</small></button>
                     <button class="tool box-tool" data-tool="blackBox"><span>B</span><small>黑盒</small></button>

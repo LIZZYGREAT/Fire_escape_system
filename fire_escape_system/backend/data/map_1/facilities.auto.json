@@ -1,0 +1,20 @@
+{
+  "source": "map1.png visual reference",
+  "coordinate_system": "F01 512x512 top-left grid",
+  "requires_manual_review": true,
+  "stairs": [
+    {"id": "S01", "label": "西侧楼梯", "grid_x": 24, "grid_y": 175, "shape": "rectangle", "width": 16, "height": 24, "requires_manual_review": true},
+    {"id": "S02", "label": "东侧楼梯", "grid_x": 480, "grid_y": 160, "shape": "rectangle", "width": 16, "height": 20, "requires_manual_review": true}
+  ],
+  "elevators": [
+    {"id": "EL01", "label": "东侧电梯", "grid_x": 478, "grid_y": 300, "shape": "rectangle", "width": 20, "height": 24, "requires_manual_review": true}
+  ],
+  "fire_hydrants": [
+    {"id": "FH01", "label": "北侧消防栓", "grid_x": 220, "grid_y": 140, "requires_manual_review": true},
+    {"id": "FH02", "label": "南侧消防栓", "grid_x": 215, "grid_y": 330, "requires_manual_review": true}
+  ],
+  "extinguishers": [
+    {"id": "FE01", "label": "北侧灭火器", "grid_x": 250, "grid_y": 140, "requires_manual_review": true},
+    {"id": "FE02", "label": "南侧灭火器", "grid_x": 245, "grid_y": 330, "requires_manual_review": true}
+  ]
+}

@@ -156,7 +156,12 @@ button { color: inherit; }
 .property-field { display: grid; gap: 4px; color: #6b7985; font-size: 10px; }
 .property-field.full { grid-column: 1 / -1; }
 .property-actions { grid-column: 1 / -1; display: flex; gap: 6px; margin-top: 2px; }
+.placement-notice { grid-column: 1 / -1; padding: 8px 9px; border-radius: 6px; font-size: 10px; line-height: 1.45; }
+.placement-notice.valid { color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0; }
+.placement-notice.invalid { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
 .small-action { padding: 6px 8px; font-size: 10px; }
+.small-action.confirm { color: #fff; background: #0f766e; border-color: #0f766e; }
+.small-action.confirm:disabled { color: #94a3b8; background: #e2e8f0; border-color: #cbd5e1; }
 .small-action.danger { color: var(--danger); border-color: #fecaca; background: #fff7f7; }
 .layer-list { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 9px; }
 .layer-list label { display: flex; align-items: center; gap: 6px; min-width: 0; color: #576674; font-size: 10px; cursor: pointer; }

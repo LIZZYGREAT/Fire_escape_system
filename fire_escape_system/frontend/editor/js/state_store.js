@@ -2,6 +2,9 @@ const ENTITY_PREFIX = {
     exits: 'E',
     refuges: 'R',
     stairs: 'S',
+    elevators: 'EL',
+    fireHydrants: 'FH',
+    extinguishers: 'FE',
     doors: 'D',
     gateways: 'G',
     blackBoxes: 'B'
@@ -18,6 +21,7 @@ const finiteNumber = (value, fallback = 0) => {
 };
 
 const arrayValue = (value) => Array.isArray(value) ? value : [];
+const RECTANGLE_COLLECTIONS = new Set(['stairs', 'elevators']);
 
 const createId = (prefix = 'item') => {
     if (globalThis.crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
@@ -55,6 +59,9 @@ export function createDefaultProject(overrides = {}) {
             exits: [],
             refuges: [],
             stairs: [],
+            elevators: [],
+            fireHydrants: [],
+            extinguishers: [],
             gateways: [],
             blackBoxes: []
         },
@@ -130,7 +137,11 @@ function normalizeEntity(entity, index, collection) {
         x: point.x,
         y: point.y,
         label: String(entity?.label ?? entity?.name ?? id),
-        locked: Boolean(entity?.locked)
+        locked: Boolean(entity?.locked),
+        shape: entity?.shape === 'rectangle' ? 'rectangle' : 'circle',
+        width: Math.max(1, finiteNumber(entity?.width, 16)),
+        height: Math.max(1, finiteNumber(entity?.height, 16)),
+        pendingPlacement: Boolean(entity?.pendingPlacement ?? entity?.pending_placement)
     };
 
     if (collection === 'doors') {
@@ -235,6 +246,9 @@ export function normalizeProject(input) {
         exits: ['exits', 'exits_data'],
         refuges: ['refuges', 'refuge_points'],
         stairs: ['stairs'],
+        elevators: ['elevators'],
+        fireHydrants: ['fireHydrants', 'fire_hydrants', 'hydrants'],
+        extinguishers: ['extinguishers', 'fire_extinguishers'],
         gateways: ['gateways'],
         blackBoxes: ['blackBoxes', 'black_boxes', 'boxes']
     };
@@ -273,6 +287,9 @@ export function nextEntityId(project, collection) {
         exits: '(?:E|EXIT[-_]?)',
         refuges: '(?:R|REFUGE[-_]?)',
         stairs: '(?:S|STAIR[-_]?)',
+        elevators: '(?:EL|ELEVATOR[-_]?)',
+        fireHydrants: '(?:FH|HYDRANT[-_]?)',
+        extinguishers: '(?:FE|EXTINGUISHER[-_]?)',
         doors: '(?:D|DOOR[-_]?)',
         gateways: '(?:G|GATEWAY[-_]?)',
         blackBoxes: '(?:B|BOX[-_]?)'
@@ -301,6 +318,10 @@ export function createEntity(project, collection, point, extra = {}) {
         y: finiteNumber(point.y),
         label: id,
         locked: false,
+        shape: RECTANGLE_COLLECTIONS.has(collection) ? 'rectangle' : 'circle',
+        width: collection === 'stairs' ? 18 : collection === 'elevators' ? 22 : 16,
+        height: collection === 'stairs' ? 28 : collection === 'elevators' ? 26 : 16,
+        pendingPlacement: true,
         ...extra
     };
     if (collection === 'doors') Object.assign(entity, { doorType: 'normal', state: 'closed' }, extra);

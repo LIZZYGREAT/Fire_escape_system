@@ -27,14 +27,18 @@ class SimulationRuntime:
         repository: MapRepository,
         compiler: MapCompiler,
         map_id: Optional[str] = None,
+        strict_validation: bool = False,
     ):
         self.repository = repository
         self.compiler = compiler
         self.map_id = map_id or repository.default_map_id()
         self.project = repository.load_project(self.map_id, prefer_draft=False)
         self.compiled = compiler.compile_internal(self.project)
-        if not self.compiled.validation.valid:
+        if strict_validation and not self.compiled.validation.valid:
             raise RuntimeError("active simulation map failed validation")
+        self.validation_error_count = sum(
+            issue.severity == "error" for issue in self.compiled.validation.issues
+        )
 
         self.walkable_yx = self.compiled.masks["walkable"]
         self.mask_matrix = self.walkable_yx.T
@@ -77,6 +81,8 @@ class SimulationRuntime:
             "coordinate_origin": "top_left",
             "x_axis": "east",
             "y_axis": "south",
+            "validation_error_count": self.validation_error_count,
+            "demo_mode": self.validation_error_count > 0,
         }
 
     @property
@@ -176,6 +182,10 @@ class SimulationRuntime:
                 [int(x), int(y), round(float(value), 1)]
                 for x, y, value in updates
             ],
+            "environment_diff": [
+                [x, y, round(heat, 2), round(smoke, 2), round(risk, 2)]
+                for x, y, heat, smoke, risk in self.fire_engine.last_environment_updates
+            ],
             "topology_tree": tree_diff,
         }
 
@@ -185,6 +195,10 @@ class SimulationRuntime:
         risk = self.fire_engine.current_risk_matrix
         wall_yx = np.argwhere(self.walkable_yx == 0)
         fire_xy = np.argwhere(risk > config.W_BASE)
+        environment_xy = np.argwhere(
+            (self.fire_engine.heat_matrix > config.W_BASE)
+            | (self.fire_engine.smoke_matrix > 0.1)
+        )
         return {
             "type": "full_sync",
             "map_metadata": self.map_metadata,
@@ -194,6 +208,15 @@ class SimulationRuntime:
             "fire_data": [
                 [int(x), int(y), float(risk[x, y])]
                 for x, y in fire_xy
+            ],
+            "environment_data": [
+                [
+                    int(x), int(y),
+                    round(float(self.fire_engine.heat_matrix[x, y]), 2),
+                    round(float(self.fire_engine.smoke_matrix[x, y]), 2),
+                    round(float(risk[x, y]), 2),
+                ]
+                for x, y in environment_xy
             ],
             "topology_tree": current_tree,
             "exits_data": [list(value) for value in self.exits],
@@ -212,4 +235,3 @@ class SimulationRuntime:
         if not self.mask_matrix[x, y]:
             raise ValueError("fire coordinate is not in the propagation domain")
         self.ground_truth_fires.append((x, y, float(intensity)))
-

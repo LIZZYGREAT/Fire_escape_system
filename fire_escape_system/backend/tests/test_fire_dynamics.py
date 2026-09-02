@@ -45,3 +45,26 @@ def test_default_spatial_variance_is_deterministic():
     second = FireDynamicsEngine(8, 6, mask)
 
     np.testing.assert_array_equal(first.spatial_variance, second.spatial_variance)
+
+
+def test_local_spread_rate_map_changes_propagation_speed():
+    mask = np.ones((9, 9), dtype=np.uint8)
+    rates = np.ones((9, 9), dtype=np.float32)
+    rates[3, 4] = 0.2
+    rates[5, 4] = 2.0
+    engine = FireDynamicsEngine(9, 9, mask, spread_rate_map=rates)
+    engine.update_wind((0.0, 0.0))
+
+    for _ in range(4):
+        engine.tick_update([(4, 4, 100.0)], iterations=1)
+
+    assert engine.heat_matrix[5, 4] > engine.heat_matrix[3, 4]
+
+
+def test_fire_fringe_is_not_promoted_to_artificial_fatal_risk():
+    mask = np.ones((9, 9), dtype=np.uint8)
+    engine = FireDynamicsEngine(9, 9, mask)
+
+    engine.tick_update([(4, 4, 100.0)], iterations=1)
+
+    assert float(engine.current_risk_matrix.max()) < 500.0

@@ -87,6 +87,9 @@ class MapCompiler:
             *[("exit", value) for value in project.entities.exits],
             *[("refuge", value) for value in project.entities.refuges],
             *[("stair", value) for value in project.entities.stairs],
+            *[("elevator", value) for value in project.entities.elevators],
+            *[("fire_hydrant", value) for value in project.entities.fire_hydrants],
+            *[("extinguisher", value) for value in project.entities.extinguishers],
             *[("gateway", value) for value in project.entities.gateways],
             *[("black_box", value) for value in project.entities.black_boxes],
         ]
@@ -273,6 +276,56 @@ class MapCompiler:
                         suggestion="移动实体或修正通行掩码",
                     )
                 )
+            if entity_type in {"stair", "elevator", "fire_hydrant", "extinguisher"}:
+                half_width = max(0.5, float(entity.width) / 2)
+                half_height = max(0.5, float(entity.height) / 2)
+                left = int(math.floor(entity.x - half_width))
+                right = int(math.ceil(entity.x + half_width))
+                top = int(math.floor(entity.y - half_height))
+                bottom = int(math.ceil(entity.y + half_height))
+                footprint_valid = (
+                    left >= 0 and top >= 0 and right < width and bottom < height
+                    and bool(np.all(walkable[top:bottom + 1, left:right + 1]))
+                )
+                if not footprint_valid:
+                    issues.append(
+                        self._issue(
+                            "MAP_E008",
+                            "error",
+                            f"{entity_type} 的设施范围覆盖墙体、不可通行区域或地图边界",
+                            entity_type=entity_type,
+                            entity_id=entity.id,
+                            x=entity.x,
+                            y=entity.y,
+                            suggestion="缩小设施尺寸或移动到完整可放置区域",
+                        )
+                    )
+
+        facilities = [
+            (kind, entity) for kind, entity in self._all_entities(project)
+            if kind in {"stair", "elevator", "fire_hydrant", "extinguisher"}
+        ]
+        for index, (kind, entity) in enumerate(facilities):
+            for other_kind, other in facilities[index + 1:]:
+                separated = (
+                    entity.x + entity.width / 2 <= other.x - other.width / 2
+                    or entity.x - entity.width / 2 >= other.x + other.width / 2
+                    or entity.y + entity.height / 2 <= other.y - other.height / 2
+                    or entity.y - entity.height / 2 >= other.y + other.height / 2
+                )
+                if not separated:
+                    issues.append(
+                        self._issue(
+                            "MAP_E009",
+                            "error",
+                            f"设施 {entity.id} 与 {other.id} 范围重叠",
+                            entity_type=kind,
+                            entity_id=entity.id,
+                            x=entity.x,
+                            y=entity.y,
+                            suggestion="调整设施位置或尺寸，避免相互覆盖",
+                        )
+                    )
 
         node_by_id = {node["id"]: node for node in topology.topology.get("nodes", [])}
         for box in boxes:
@@ -513,6 +566,7 @@ class MapCompiler:
         )
         validation = self._validate(project, masks, skeleton, boxes, topology)
         return {
+            "skeleton_points": self.skeleton_extractor.points(skeleton),
             "candidate_boxes": [
                 value.model_dump(mode="json", by_alias=True) for value in optimized
             ],

@@ -21,6 +21,7 @@ from .editor import (
     ValidationIssue,
     ValidationResult,
 )
+from .hazard import HazardObservation, HazardObservationBatch
 
 __all__ = [
     "APIModel",
@@ -42,4 +43,6 @@ __all__ = [
     "StrokeLayers",
     "ValidationIssue",
     "ValidationResult",
+    "HazardObservation",
+    "HazardObservationBatch",
 ]

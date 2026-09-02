@@ -2,9 +2,13 @@
 
 export const GlobalState = {
     fireMap: new Map(),
+    heatMap: new Map(),
+    smokeMap: new Map(),
     topologyTree: new Map(), 
     wallData: [],
     exitsData: [],
+    mapMetadata: {},
+    tick: 0,
     isBaselineSynced: false,
     // 默认面向群众，只消费 next；消防搜救模式由用户显式切换后才消费 rescue_next。
     guidanceMode: 'evacuation'
@@ -51,6 +55,10 @@ class NetworkEngine {
 
         const syncProbe = { type: "request_full_sync" };
         this.ws.send(JSON.stringify(syncProbe));
+        fetch('/api/runtime/snapshot', { cache: 'no-store' })
+            .then((response) => response.json())
+            .then((snapshot) => this.processFullSync(snapshot))
+            .catch((error) => console.warn('[Network] HTTP baseline fallback failed', error));
     }
 
     handleMessage(event) {
@@ -61,6 +69,10 @@ class NetworkEngine {
                 this.processFullSync(data);
             } else if (data.type === "tick_update") {
                 this.processTickUpdate(data);
+            } else if (data.type === "runtime_settings") {
+                document.dispatchEvent(new CustomEvent('runtimeSettingsChanged', { detail: data }));
+            } else if (data.type === "error") {
+                document.dispatchEvent(new CustomEvent('runtimeError', { detail: data }));
             }
         } catch (error) {
             console.error("[Network] 数据帧反序列化失败:", error);
@@ -85,24 +97,38 @@ class NetworkEngine {
         setTimeout(() => { this.connect(); }, delay);
     }
 
-    sendControl(command) {
+    sendControl(command, payload = {}) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({
                 type: "control",
-                command: command
+                command: command,
+                ...payload
             }));
         }
     }
 
     processFullSync(data) {
         GlobalState.fireMap.clear();
+        GlobalState.heatMap.clear();
+        GlobalState.smokeMap.clear();
         GlobalState.topologyTree.clear();
         GlobalState.wallData = data.wall_data || []; 
         GlobalState.exitsData = data.exits_data || [];
+        GlobalState.mapMetadata = data.map_metadata || {};
+        GlobalState.tick = Number(data.tick) || 0;
         
         if (data.fire_data) {
             data.fire_data.forEach(([x, y, weight]) => {
                 GlobalState.fireMap.set(`${x},${y}`, weight);
+            });
+        }
+
+        if (data.environment_data) {
+            data.environment_data.forEach(([x, y, heat, smoke, risk]) => {
+                const key = `${x},${y}`;
+                GlobalState.heatMap.set(key, heat);
+                GlobalState.smokeMap.set(key, smoke);
+                GlobalState.fireMap.set(key, risk);
             });
         }
 
@@ -119,9 +145,24 @@ class NetworkEngine {
     processTickUpdate(data) {
         if (!GlobalState.isBaselineSynced) return;
 
+        GlobalState.mapMetadata = data.map_metadata || GlobalState.mapMetadata;
+        GlobalState.tick = Number(data.tick) || GlobalState.tick;
+
         if (data.fire_diff) {
             data.fire_diff.forEach(([x, y, weight]) => {
                 GlobalState.fireMap.set(`${x},${y}`, weight);
+            });
+        }
+
+        if (data.environment_diff) {
+            data.environment_diff.forEach(([x, y, heat, smoke, risk]) => {
+                const key = `${x},${y}`;
+                if (heat <= 1.01) GlobalState.heatMap.delete(key);
+                else GlobalState.heatMap.set(key, heat);
+                if (smoke <= 0.1) GlobalState.smokeMap.delete(key);
+                else GlobalState.smokeMap.set(key, smoke);
+                if (risk <= 1.01) GlobalState.fireMap.delete(key);
+                else GlobalState.fireMap.set(key, risk);
             });
         }
 

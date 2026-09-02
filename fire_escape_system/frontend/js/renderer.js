@@ -1,273 +1,208 @@
-// frontend/js/renderer.js
 import { GlobalState } from './network.js';
 
 const PALETTE = {
-    bg: '#FFFFFF',
-    grid: 'rgba(0, 0, 0, 0.05)',
-    wall: '#000000',
-    exitNeon: '#00FF00', 
-    exitCore: '#FFFFFF',
-    
-    // 烟雾颜色
-    smokeDense: 'rgba(155, 89, 182, 0.40)',    
-    smokeFringe: 'rgba(155, 89, 182, 0)',      
-    
-    // SOS 区域：群众必须停止盲目突围并等待消防搜救
-    sosDensity: 'rgba(220, 38, 38, 0.28)',
-    sosBorder: 'rgba(185, 28, 28, 0.92)'
+    background: '#f7faf9',
+    grid: 'rgba(71, 85, 105, 0.075)',
+    wall: '#26343d',
+    exit: '#10b981',
+    exitDark: '#047857',
+    smokeRgb: [71, 85, 105],
+    smokeLightRgb: [148, 163, 184],
+    sosDensity: 'rgba(220, 38, 38, 0.20)',
+    sosBorder: 'rgba(185, 28, 28, 0.86)'
 };
 
-export class SceneRenderer {
-    constructor(containerId, gridWidth, gridHeight, cellSize = 15) {
-        this.container = document.getElementById(containerId);
-        this.gridWidth = gridWidth;
-        this.gridHeight = gridHeight;
-        this.cellSize = cellSize;
-        
-        this.pixelWidth = this.gridWidth * this.cellSize;
-        this.pixelHeight = this.gridHeight * this.cellSize;
+const clamp01 = (value) => Math.max(0, Math.min(1, value));
+const mix = (a, b, t) => Math.round(a + (b - a) * t);
 
-        this.bgCanvas = this._createCanvas(1, 'bg-layer');         
-        this.envCanvas = this._createCanvas(2, 'env-layer');       
-        this.mainCanvas = this._createCanvas(3, 'spline-layer');   
-        
-        this.bgCtx = this.bgCanvas.getContext('2d', { alpha: false }); 
+export class SceneRenderer {
+    constructor(containerId, gridWidth, gridHeight, cellSize = 3) {
+        this.container = document.getElementById(containerId);
+        this.cellSize = cellSize;
+        this.bgCanvas = this._createCanvas(1, 'bg-layer');
+        this.envCanvas = this._createCanvas(2, 'env-layer');
+        this.mainCanvas = this._createCanvas(3, 'spline-layer');
+        this.bgCtx = this.bgCanvas.getContext('2d', { alpha: false });
         this.envCtx = this.envCanvas.getContext('2d');
         this.mainCtx = this.mainCanvas.getContext('2d');
+        this.resizeGrid(gridWidth, gridHeight);
+        this.drawStaticTopology([]);
     }
 
     _createCanvas(zIndex, id) {
         const canvas = document.createElement('canvas');
         canvas.id = id;
-        canvas.width = this.pixelWidth;
-        canvas.height = this.pixelHeight;
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.zIndex = zIndex.toString();
+        Object.assign(canvas.style, { position: 'absolute', inset: '0', zIndex: String(zIndex) });
         this.container.appendChild(canvas);
         return canvas;
     }
 
-    drawStaticTopology(wallCoordinates) {
-        this.bgCtx.fillStyle = PALETTE.bg;
-        this.bgCtx.fillRect(0, 0, this.pixelWidth, this.pixelHeight);
-        
-        this.bgCtx.strokeStyle = PALETTE.grid;
-        this.bgCtx.lineWidth = 0.5;
-        this.bgCtx.beginPath();
-        for (let x = 0; x <= this.pixelWidth; x += this.cellSize * 5) {
-            this.bgCtx.moveTo(x, 0); this.bgCtx.lineTo(x, this.pixelHeight);
-        }
-        for (let y = 0; y <= this.pixelHeight; y += this.cellSize * 5) {
-            this.bgCtx.moveTo(0, y); this.bgCtx.lineTo(this.pixelWidth, y);
-        }
-        this.bgCtx.stroke();
+    resizeGrid(width, height) {
+        const nextWidth = Math.max(1, Number(width) || 1);
+        const nextHeight = Math.max(1, Number(height) || 1);
+        if (this.gridWidth === nextWidth && this.gridHeight === nextHeight) return;
+        this.gridWidth = nextWidth;
+        this.gridHeight = nextHeight;
+        this.pixelWidth = this.gridWidth * this.cellSize;
+        this.pixelHeight = this.gridHeight * this.cellSize;
+        [this.bgCanvas, this.envCanvas, this.mainCanvas].forEach((canvas) => {
+            canvas.width = this.pixelWidth;
+            canvas.height = this.pixelHeight;
+        });
+        this.container.style.aspectRatio = `${this.gridWidth} / ${this.gridHeight}`;
+    }
 
-        this.bgCtx.fillStyle = PALETTE.wall;
+    drawStaticTopology(wallCoordinates) {
+        const ctx = this.bgCtx;
+        ctx.fillStyle = PALETTE.background;
+        ctx.fillRect(0, 0, this.pixelWidth, this.pixelHeight);
+        ctx.strokeStyle = PALETTE.grid;
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        for (let x = 0; x <= this.pixelWidth; x += this.cellSize * 10) {
+            ctx.moveTo(x, 0); ctx.lineTo(x, this.pixelHeight);
+        }
+        for (let y = 0; y <= this.pixelHeight; y += this.cellSize * 10) {
+            ctx.moveTo(0, y); ctx.lineTo(this.pixelWidth, y);
+        }
+        ctx.stroke();
+        ctx.fillStyle = PALETTE.wall;
         for (const [x, y] of wallCoordinates) {
-            this.bgCtx.fillRect(x * this.cellSize, y * this.cellSize, this.cellSize, this.cellSize);
+            ctx.fillRect(x * this.cellSize, y * this.cellSize, this.cellSize, this.cellSize);
         }
     }
 
     _drawDynamicExits(timestamp) {
-        if (!GlobalState.exitsData) return;
-
-        const pulse = (Math.sin(timestamp / 200) + 1) / 2;
-        
-        this.mainCtx.save();
-        for (const [x, y] of GlobalState.exitsData) {
-            const cx = x * this.cellSize + this.cellSize / 2;
-            const cy = y * this.cellSize + this.cellSize / 2;
-            
-            const rippleSize = this.cellSize * (6 + pulse * 6);
-            const rippleGrad = this.mainCtx.createRadialGradient(cx, cy, 0, cx, cy, rippleSize);
-            rippleGrad.addColorStop(0, `rgba(0, 255, 0, ${0.3 * (1 - pulse)})`);
-            rippleGrad.addColorStop(1, 'rgba(0, 255, 0, 0)');
-            
-            this.mainCtx.fillStyle = rippleGrad;
-            this.mainCtx.beginPath();
-            this.mainCtx.arc(cx, cy, rippleSize, 0, Math.PI * 2);
-            this.mainCtx.fill();
-
-            const bodySize = this.cellSize * 5; 
-            
-            this.mainCtx.shadowBlur = 15;
-            this.mainCtx.shadowColor = PALETTE.exitNeon;
-            this.mainCtx.strokeStyle = PALETTE.exitNeon;
-            this.mainCtx.lineWidth = 3;
-            this.mainCtx.strokeRect(cx - bodySize/2, cy - bodySize/2, bodySize, bodySize);
-
-            this.mainCtx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-            this.mainCtx.fillRect(cx - bodySize/2, cy - bodySize/2, bodySize, bodySize);
-
-            this.mainCtx.shadowBlur = 0;
-            this.mainCtx.fillStyle = PALETTE.exitCore;
-            const coreW = bodySize * 0.5;
-            const coreH = bodySize * 0.7;
-            this.mainCtx.fillRect(cx - coreW/2, cy - coreH/2, coreW, coreH);
+        const pulse = (Math.sin(timestamp / 320) + 1) / 2;
+        const ctx = this.mainCtx;
+        ctx.save();
+        for (const [x, y] of GlobalState.exitsData || []) {
+            const cx = (x + 0.5) * this.cellSize;
+            const cy = (y + 0.5) * this.cellSize;
+            const radius = this.cellSize * (4.5 + pulse * 2.5);
+            const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+            halo.addColorStop(0, `rgba(16, 185, 129, ${0.28 - pulse * 0.08})`);
+            halo.addColorStop(1, 'rgba(16, 185, 129, 0)');
+            ctx.fillStyle = halo;
+            ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
+            const size = Math.max(8, this.cellSize * 3.2);
+            ctx.fillStyle = PALETTE.exit;
+            ctx.strokeStyle = PALETTE.exitDark;
+            ctx.lineWidth = Math.max(1, this.cellSize * 0.55);
+            ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+            ctx.strokeRect(cx - size / 2, cy - size / 2, size, size);
+            ctx.fillStyle = '#fff';
+            ctx.font = `700 ${Math.max(7, size * 0.56)}px sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('出', cx, cy + 0.5);
         }
-        this.mainCtx.restore();
-    }
-
-    // 独立的方法 1：动态火场颜色插值逻辑
-    _getDynamicFireColor(weight) {
-        const minW = 70.0;
-        const maxW = 150.0;
-        const ratio = Math.max(0, Math.min(1, (weight - minW) / (maxW - minW)));
-
-        // 从 明黄色 (255, 215, 0) 过渡到 橙红色 (255, 69, 0)
-        const r = 255;
-        const g = Math.round(215 - ratio * (215 - 69)); 
-        const b = 0;
-        const alpha = 0.8 + ratio * 0.15; 
-        
-        return {
-            core: `rgba(${r}, ${g}, ${b}, ${alpha})`,
-            fringe: `rgba(${r}, ${g}, ${b}, 0)`
-        };
-    }
-
-    // 独立的方法 2：基于火场距离与地图边界的三重约束半径计算
-    _getDynamicAlertRadius(gx, gy) {
-        let minDistSq = Infinity;
-        
-        // 1. 计算到最近火场的距离
-        GlobalState.fireMap.forEach((weight, coordStr) => {
-            if (weight >= 70.0) {
-                const [fx, fy] = coordStr.split(',').map(Number);
-                const dx = fx - gx;
-                const dy = fy - gy;
-                const distSq = dx * dx + dy * dy;
-                if (distSq < minDistSq) {
-                    minDistSq = distSq;
-                }
-            }
-        });
-
-        // 距离作为直径，故半径为距离的一半
-        const distFire = (minDistSq === Infinity) ? 30.0 : Math.sqrt(minDistSq);
-        const radiusFromFire = distFire;
-
-        // 2. 计算到地图绝对边界 [10, 240] 的正交距离
-        const distBoundaryX = Math.min(gx - 10, 240 - gx);
-        const distBoundaryY = Math.min(gy - 10, 240 - gy);
-        const radiusFromBoundary = Math.max(0, Math.min(distBoundaryX, distBoundaryY));
-
-        // 3. 最大半径上限值熔断
-        const MAX_RADIUS = 25.0;
-
-        // 核心约束：三者取最小值
-        const finalGridRadius = Math.min(radiusFromFire, radiusFromBoundary, MAX_RADIUS);
-
-        // 严格防止 Canvas 渲染崩溃的保底断言
-        return Math.max(1.0, finalGridRadius); 
+        ctx.restore();
     }
 
     updateEnvironment() {
-        this.envCtx.clearRect(0, 0, this.pixelWidth, this.pixelHeight);
-        this.envCtx.globalCompositeOperation = 'source-over';
+        const ctx = this.envCtx;
+        ctx.clearRect(0, 0, this.pixelWidth, this.pixelHeight);
 
-        const smokeNodes = [];
-        const fireNodes = [];
-
-        GlobalState.fireMap.forEach((weight, coordStr) => {
-            if (weight < 1.5) return;
-            const [x, y] = coordStr.split(',').map(Number);
-            const cx = x * this.cellSize + this.cellSize / 2;
-            const cy = y * this.cellSize + this.cellSize / 2;
-            
-            if (weight >= 70.0) {
-                fireNodes.push({ cx, cy, weight });
-            } else {
-                smokeNodes.push({ cx, cy, weight });
-            }
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        GlobalState.smokeMap.forEach((smoke, key) => {
+            if (smoke < 0.5) return;
+            const [x, y] = key.split(',').map(Number);
+            const t = clamp01(smoke / 100);
+            const rgb = PALETTE.smokeLightRgb.map((value, index) => mix(value, PALETTE.smokeRgb[index], t));
+            const cx = (x + 0.5) * this.cellSize;
+            const cy = (y + 0.5) * this.cellSize;
+            const radius = this.cellSize * (2.5 + t * 5.5);
+            const cloud = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+            cloud.addColorStop(0, `rgba(${rgb.join(',')}, ${0.14 + t * 0.48})`);
+            cloud.addColorStop(0.55, `rgba(${rgb.join(',')}, ${0.06 + t * 0.26})`);
+            cloud.addColorStop(1, `rgba(${rgb.join(',')}, 0)`);
+            ctx.fillStyle = cloud;
+            ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
         });
 
-        // 1. 绘制底层紫烟
-        smokeNodes.forEach(node => {
-            const radius = this.cellSize * Math.min(node.weight / 10, 5.0);
-            const gradient = this.envCtx.createRadialGradient(node.cx, node.cy, 0, node.cx, node.cy, radius);
-            gradient.addColorStop(0, PALETTE.smokeDense);
-            gradient.addColorStop(1, PALETTE.smokeFringe);
-            
-            this.envCtx.fillStyle = gradient;
-            this.envCtx.beginPath();
-            this.envCtx.arc(node.cx, node.cy, radius, 0, Math.PI * 2);
-            this.envCtx.fill();
+        GlobalState.heatMap.forEach((heat, key) => {
+            const excess = Math.max(0, heat - 1);
+            if (excess < 0.8) return;
+            const [x, y] = key.split(',').map(Number);
+            const ignition = clamp01(excess / 70);
+            const red = 245;
+            const green = mix(196, 45, ignition);
+            const alpha = 0.12 + ignition * 0.76;
+            ctx.fillStyle = `rgba(${red}, ${green}, 20, ${alpha})`;
+            ctx.fillRect(x * this.cellSize, y * this.cellSize, this.cellSize, this.cellSize);
         });
 
-        // 2. 绘制顶层动态火场 (调用 _getDynamicFireColor 映射色彩)
-        fireNodes.forEach(node => {
-            const radius = this.cellSize * 2.2; 
-            const fireColors = this._getDynamicFireColor(node.weight);
+        const fireCores = [...GlobalState.heatMap.entries()]
+            .filter(([, heat]) => heat >= 50)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 180);
+        for (const [key, heat] of fireCores) {
+            const [x, y] = key.split(',').map(Number);
+            const cx = (x + 0.5) * this.cellSize;
+            const cy = (y + 0.5) * this.cellSize;
+            const t = clamp01((heat - 50) / 100);
+            const radius = this.cellSize * (1.8 + t * 1.5);
+            const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+            glow.addColorStop(0, 'rgba(255, 250, 205, 0.98)');
+            glow.addColorStop(0.28, `rgba(251, 146, 60, ${0.9 - t * 0.1})`);
+            glow.addColorStop(0.72, `rgba(220, 38, 38, ${0.64 + t * 0.2})`);
+            glow.addColorStop(1, 'rgba(127, 29, 29, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
 
-            const gradient = this.envCtx.createRadialGradient(node.cx, node.cy, 0, node.cx, node.cy, radius);
-            gradient.addColorStop(0, fireColors.core);
-            gradient.addColorStop(1, fireColors.fringe);
-            
-            this.envCtx.fillStyle = gradient;
-            this.envCtx.beginPath();
-            this.envCtx.arc(node.cx, node.cy, radius, 0, Math.PI * 2);
-            this.envCtx.fill();
-        });
-
-        // 3. 墙体防遮挡镂空逻辑 (Alpha Clipping)
-        if (GlobalState.wallData && GlobalState.wallData.length > 0) {
-            this.envCtx.globalCompositeOperation = 'destination-out';
-            this.envCtx.fillStyle = '#FFFFFF'; 
-            
+        if (GlobalState.wallData?.length) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = '#fff';
             for (const [x, y] of GlobalState.wallData) {
-                this.envCtx.fillRect(x * this.cellSize, y * this.cellSize, this.cellSize, this.cellSize);
+                ctx.fillRect(x * this.cellSize, y * this.cellSize, this.cellSize, this.cellSize);
             }
-            this.envCtx.globalCompositeOperation = 'source-over'; 
+            ctx.restore();
         }
     }
 
-    _drawPeopleDensity(timestamp) {
-        const densitySources = [];
-        GlobalState.topologyTree.forEach((data, key) => {
-            if (data.status === 2 || data.mode === 'SOS') densitySources.push(key);
+    _getAlertRadius(gx, gy) {
+        let nearest = 25;
+        GlobalState.heatMap.forEach((heat, key) => {
+            if (heat < 50) return;
+            const [fx, fy] = key.split(',').map(Number);
+            nearest = Math.min(nearest, Math.hypot(fx - gx, fy - gy));
         });
-        
-        if (densitySources.length === 0) return;
+        const boundary = Math.max(1, Math.min(gx, gy, this.gridWidth - gx, this.gridHeight - gy));
+        return Math.max(2, Math.min(nearest, boundary, 25));
+    }
 
-        this.mainCtx.save();
-        const dashOffset = -(timestamp / 50.0);
-
-        densitySources.forEach(coordStr => {
-            const [x, y] = coordStr.split(',').map(Number);
-            const cx = x * this.cellSize + this.cellSize / 2;
-            const cy = y * this.cellSize + this.cellSize / 2;
-            
-            // 调用多重约束函数获取安全的网格半径
-            const gridRadius = this._getDynamicAlertRadius(x, y);
-            const radius = this.cellSize * gridRadius;
-            
-            const gradient = this.mainCtx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+    _drawPeopleDensity(timestamp) {
+        const sources = [...GlobalState.topologyTree.entries()]
+            .filter(([, data]) => data.status === 2 || data.mode === 'SOS')
+            .map(([key]) => key);
+        if (!sources.length) return;
+        const ctx = this.mainCtx;
+        ctx.save();
+        sources.forEach((key) => {
+            const [x, y] = key.split(',').map(Number);
+            const cx = (x + 0.5) * this.cellSize;
+            const cy = (y + 0.5) * this.cellSize;
+            const radius = this.cellSize * this._getAlertRadius(x, y);
+            const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
             gradient.addColorStop(0, PALETTE.sosDensity);
             gradient.addColorStop(1, 'rgba(220, 38, 38, 0)');
-            
-            this.mainCtx.fillStyle = gradient;
-            this.mainCtx.beginPath();
-            this.mainCtx.arc(cx, cy, radius, 0, Math.PI * 2);
-            this.mainCtx.fill();
-
-            this.mainCtx.strokeStyle = PALETTE.sosBorder;
-            this.mainCtx.lineWidth = 1;
-            this.mainCtx.setLineDash([this.cellSize * 2, this.cellSize * 1.5]);
-            this.mainCtx.lineDashOffset = dashOffset;
-            this.mainCtx.beginPath();
-            this.mainCtx.arc(cx, cy, radius * 0.85, 0, Math.PI * 2);
-            this.mainCtx.stroke();
+            ctx.fillStyle = gradient;
+            ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = PALETTE.sosBorder;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([this.cellSize * 2, this.cellSize * 1.5]);
+            ctx.lineDashOffset = -timestamp / 70;
+            ctx.beginPath(); ctx.arc(cx, cy, radius * 0.84, 0, Math.PI * 2); ctx.stroke();
         });
-        
-        this.mainCtx.restore();
+        ctx.restore();
     }
 
     clearMainLayer(timestamp = 0) {
         this.mainCtx.clearRect(0, 0, this.pixelWidth, this.pixelHeight);
-        
         this._drawPeopleDensity(timestamp);
         this._drawDynamicExits(timestamp);
     }

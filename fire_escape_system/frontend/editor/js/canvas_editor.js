@@ -4,6 +4,9 @@ const ENTITY_TOOLS = {
     exit: 'exits',
     refuge: 'refuges',
     stair: 'stairs',
+    elevator: 'elevators',
+    fireHydrant: 'fireHydrants',
+    extinguisher: 'extinguishers',
     door: 'doors',
     gateway: 'gateways',
     blackBox: 'blackBoxes'
@@ -13,10 +16,15 @@ const ENTITY_STYLES = {
     exits: { color: '#16a34a', fill: '#dcfce7', glyph: '出' },
     refuges: { color: '#0f766e', fill: '#ccfbf1', glyph: '避' },
     stairs: { color: '#7e22ce', fill: '#f3e8ff', glyph: '梯' },
+    elevators: { color: '#1d4ed8', fill: '#dbeafe', glyph: '电' },
+    fireHydrants: { color: '#dc2626', fill: '#fee2e2', glyph: '栓' },
+    extinguishers: { color: '#e11d48', fill: '#ffe4e6', glyph: '灭' },
     doors: { color: '#b45309', fill: '#fef3c7', glyph: '门' },
     gateways: { color: '#0369a1', fill: '#e0f2fe', glyph: '网' },
     blackBoxes: { color: '#111827', fill: '#fbbf24', glyph: 'B' }
 };
+
+const SHAPE_FACILITIES = new Set(['stairs', 'elevators', 'fireHydrants', 'extinguishers']);
 
 const DEFAULT_LAYERS = {
     base: true,
@@ -39,6 +47,15 @@ const isPointLike = (value) => Array.isArray(value)
 const pointOf = (value) => Array.isArray(value)
     ? { x: Number(value[0]), y: Number(value[1]) }
     : { x: Number(value.x), y: Number(value.y) };
+const rectOverlapArea = (first, second) => {
+    const width = Math.max(0, Math.min(first.right, second.right) - Math.max(first.left, second.left));
+    const height = Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top));
+    return width * height;
+};
+const rectInsideMap = (rect, map) => rect.left >= 0
+    && rect.top >= 0
+    && rect.right <= map.width
+    && rect.bottom <= map.height;
 
 function extractCenterlinePaths(raw) {
     if (!raw) return [];
@@ -133,15 +150,18 @@ export class CanvasMapEditor {
 
     setTool(tool) {
         if (!tool) return;
-        const leavingMeasurement = this.tool === 'measure' && tool !== 'measure';
         this.tool = tool;
         this.interaction = null;
-        if (leavingMeasurement) {
-            this.measurement = null;
-            this.callbacks.onMeasurement?.(null);
-        }
+        if (tool !== 'measure') this.clearMeasurement();
         this.canvas.dataset.tool = tool;
         this.callbacks.onToolChange?.(tool);
+        this.render();
+    }
+
+    clearMeasurement() {
+        const hadMeasurement = Boolean(this.measurement);
+        this.measurement = null;
+        if (hadMeasurement) this.callbacks.onMeasurement?.(null);
         this.render();
     }
 
@@ -172,7 +192,55 @@ export class CanvasMapEditor {
             Object.assign(entity, changes);
             entity.x = clamp(Number(entity.x) || 0, 0, project.map.width);
             entity.y = clamp(Number(entity.y) || 0, 0, project.map.height);
+            entity.width = clamp(Number(entity.width) || 1, 1, project.map.width);
+            entity.height = clamp(Number(entity.height) || 1, 1, project.map.height);
         }, reason);
+        this.callbacks.onSelectionChange?.(this.getSelectedEntity(), reference);
+    }
+
+    validateEntityPlacement(collection, entity) {
+        if (!entity || !SHAPE_FACILITIES.has(collection)) return { valid: true, messages: [] };
+        const project = this.store.project;
+        const halfWidth = (Number(entity.width) || 1) / 2;
+        const halfHeight = (Number(entity.height) || 1) / 2;
+        const bounds = {
+            left: entity.x - halfWidth, right: entity.x + halfWidth,
+            top: entity.y - halfHeight, bottom: entity.y + halfHeight
+        };
+        const messages = [];
+        if (bounds.left < 0 || bounds.top < 0 || bounds.right > project.map.width || bounds.bottom > project.map.height) {
+            messages.push('设施超出地图边界');
+        }
+        const wallPixels = new Set(project.annotations.wallPixels.map(([x, y]) => `${Math.round(x)},${Math.round(y)}`));
+        let touchesWall = false;
+        for (let y = Math.ceil(Math.max(0, bounds.top)); y <= Math.floor(Math.min(project.map.height - 1, bounds.bottom)) && !touchesWall; y += 1) {
+            for (let x = Math.ceil(Math.max(0, bounds.left)); x <= Math.floor(Math.min(project.map.width - 1, bounds.right)); x += 1) {
+                if (wallPixels.has(`${x},${y}`)) { touchesWall = true; break; }
+            }
+        }
+        if (touchesWall) messages.push('设施覆盖墙体或不可通行区域');
+        for (const [otherCollection, entities] of Object.entries(project.entities)) {
+            if (!SHAPE_FACILITIES.has(otherCollection)) continue;
+            for (const other of entities) {
+                if (otherCollection === collection && other.id === entity.id) continue;
+                const otherHalfWidth = (Number(other.width) || 1) / 2;
+                const otherHalfHeight = (Number(other.height) || 1) / 2;
+                const separated = bounds.right <= other.x - otherHalfWidth
+                    || bounds.left >= other.x + otherHalfWidth
+                    || bounds.bottom <= other.y - otherHalfHeight
+                    || bounds.top >= other.y + otherHalfHeight;
+                if (!separated) messages.push(`与 ${other.label || other.id} 重叠`);
+            }
+        }
+        return { valid: messages.length === 0, messages };
+    }
+
+    confirmSelectedPlacement() {
+        const entity = this.getSelectedEntity();
+        const result = this.validateEntityPlacement(this.selected?.collection, entity);
+        if (!result.valid) return result;
+        this.updateSelected({ pendingPlacement: false }, 'confirm facility placement');
+        return result;
     }
 
     toggleSelectedLock() {
@@ -266,8 +334,9 @@ export class CanvasMapEditor {
         }
         if (this.layers.centerline) this._drawCenterline(ctx, project.derived.centerline);
         if (this.layers.coverage && this.layers.blackBoxes) this._drawCoverage(ctx, project);
+        this._labelLayout = this._buildEntityLabelLayout(ctx, project);
         if (this.layers.semantic) {
-            ['doors', 'exits', 'refuges', 'stairs', 'gateways'].forEach((collection) => {
+            ['doors', 'exits', 'refuges', 'stairs', 'elevators', 'fireHydrants', 'extinguishers', 'gateways'].forEach((collection) => {
                 this._drawEntities(ctx, collection, project.entities[collection]);
             });
         }
@@ -379,6 +448,214 @@ export class CanvasMapEditor {
         ctx.restore();
     }
 
+    _entityFootprint(collection, entity) {
+        const radius = 8 / this.view.scale;
+        const halfWidth = entity.shape === 'rectangle'
+            ? (Number(entity.width) || 16) / 2
+            : radius;
+        const halfHeight = entity.shape === 'rectangle'
+            ? (Number(entity.height) || 16) / 2
+            : radius;
+        return {
+            left: entity.x - halfWidth,
+            top: entity.y - halfHeight,
+            right: entity.x + halfWidth,
+            bottom: entity.y + halfHeight,
+            collection
+        };
+    }
+
+    _buildEntityLabelLayout(ctx, project) {
+        const collections = [];
+        if (this.layers.semantic) {
+            collections.push('doors', 'exits', 'refuges', 'stairs', 'elevators',
+                'fireHydrants', 'extinguishers', 'gateways');
+        }
+        if (this.layers.blackBoxes) collections.push('blackBoxes');
+
+        const entries = collections.flatMap((collection) =>
+            (project.entities[collection] ?? []).map((entity) => ({ collection, entity }))
+        );
+        if (!entries.length) return new Map();
+
+        const scale = this.view.scale;
+        const fontSize = 9 / scale;
+        const paddingX = 2.5 / scale;
+        const paddingY = 1.8 / scale;
+        const gap = 4 / scale;
+        const map = project.map;
+        const wallPixelSource = project.annotations.wallPixels ?? [];
+        const wallStrokeSource = project.annotations.strokes?.walls ?? [];
+        let obstacleCache = this._labelObstacleCache;
+        if (!obstacleCache
+            || obstacleCache.wallPixelSource !== wallPixelSource
+            || obstacleCache.wallStrokeSource !== wallStrokeSource
+            || obstacleCache.mapWidth !== map.width) {
+            const wallPixels = new Set(
+                wallPixelSource.map((point) =>
+                    Math.round(Number(point[1])) * map.width + Math.round(Number(point[0]))
+                )
+            );
+            const wallRects = [];
+            wallStrokeSource.forEach((stroke) => {
+                const points = stroke.points ?? [];
+                const halfSize = Math.max(0.5, Number(stroke.size) || 1) / 2;
+                points.forEach((point, index) => {
+                    const next = points[index + 1] ?? point;
+                    wallRects.push({
+                        left: Math.min(point.x, next.x) - halfSize,
+                        top: Math.min(point.y, next.y) - halfSize,
+                        right: Math.max(point.x, next.x) + halfSize,
+                        bottom: Math.max(point.y, next.y) + halfSize
+                    });
+                });
+            });
+            obstacleCache = {
+                wallPixelSource,
+                wallStrokeSource,
+                mapWidth: map.width,
+                wallPixels,
+                wallRects
+            };
+            this._labelObstacleCache = obstacleCache;
+        }
+        const { wallPixels, wallRects } = obstacleCache;
+
+        const symbols = entries.map(({ collection, entity }) => ({
+            key: `${collection}:${entity.id}`,
+            rect: this._entityFootprint(collection, entity)
+        }));
+        if (this.layers.candidates) {
+            const candidateRadius = 7 / scale;
+            (project.derived.candidates ?? []).forEach((candidate) => symbols.push({
+                key: null,
+                rect: {
+                    left: candidate.x - candidateRadius,
+                    top: candidate.y - candidateRadius,
+                    right: candidate.x + candidateRadius,
+                    bottom: candidate.y + candidateRadius
+                }
+            }));
+        }
+
+        const wallPenalty = (rect) => {
+            let penalty = 0;
+            if (wallPixels.size) {
+                const left = Math.max(0, Math.floor(rect.left));
+                const right = Math.min(map.width - 1, Math.ceil(rect.right));
+                const top = Math.max(0, Math.floor(rect.top));
+                const bottom = Math.min(map.height - 1, Math.ceil(rect.bottom));
+                for (let y = top; y <= bottom; y += 1) {
+                    for (let x = left; x <= right; x += 1) {
+                        if (wallPixels.has(y * map.width + x)) penalty += 1;
+                    }
+                }
+            }
+            wallRects.forEach((wall) => {
+                penalty += rectOverlapArea(rect, wall);
+            });
+            return penalty;
+        };
+
+        const occupiedLabels = [];
+        const layout = new Map();
+        ctx.save();
+        ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+
+        entries.forEach(({ collection, entity }) => {
+            const key = `${collection}:${entity.id}`;
+            const text = `${entity.label || entity.id}${entity.locked ? ' · 锁' : ''}`;
+            const textWidth = Math.max(fontSize, ctx.measureText(text).width);
+            const width = textWidth + paddingX * 2;
+            const height = fontSize * 1.25 + paddingY * 2;
+            const footprint = this._entityFootprint(collection, entity);
+
+            // Priority: right-up, right-down, left-up, left-down.
+            const positions = [
+                { left: footprint.right + gap, top: footprint.top - gap - height },
+                { left: footprint.right + gap, top: footprint.bottom + gap },
+                { left: footprint.left - gap - width, top: footprint.top - gap - height },
+                { left: footprint.left - gap - width, top: footprint.bottom + gap }
+            ].map((position, priority) => ({
+                priority,
+                left: position.left,
+                top: position.top,
+                right: position.left + width,
+                bottom: position.top + height
+            }));
+
+            const score = (rect) => {
+                let overlap = wallPenalty(rect);
+                symbols.forEach((symbol) => {
+                    if (symbol.key !== key) overlap += rectOverlapArea(rect, symbol.rect);
+                });
+                occupiedLabels.forEach((labelRect) => {
+                    overlap += rectOverlapArea(rect, labelRect);
+                });
+                return overlap;
+            };
+            const assessed = positions.map((rect) => ({
+                ...rect,
+                inside: rectInsideMap(rect, map),
+                overlap: score(rect)
+            }));
+
+            // First take the configured priority order when there is no
+            // collision. If all four collide, an in-bounds overlap is always
+            // preferred over clipped text.
+            let chosen = assessed.find((candidate) => candidate.inside && candidate.overlap === 0);
+            if (!chosen) {
+                chosen = assessed
+                    .filter((candidate) => candidate.inside)
+                    .sort((first, second) =>
+                        first.overlap - second.overlap || first.priority - second.priority
+                    )[0];
+            }
+            if (!chosen) {
+                const clamped = assessed.map((candidate) => {
+                    const left = clamp(candidate.left, 0, Math.max(0, map.width - width));
+                    const top = clamp(candidate.top, 0, Math.max(0, map.height - height));
+                    const rect = { ...candidate, left, top, right: left + width, bottom: top + height };
+                    return { ...rect, overlap: score(rect) };
+                });
+                chosen = clamped.sort((first, second) =>
+                    first.overlap - second.overlap || first.priority - second.priority
+                )[0];
+            }
+
+            occupiedLabels.push(chosen);
+            layout.set(key, {
+                text,
+                rect: chosen,
+                textX: chosen.left + paddingX,
+                textY: chosen.bottom - paddingY,
+                fontSize
+            });
+        });
+        ctx.restore();
+        return layout;
+    }
+
+    _drawEntityLabel(ctx, collection, entity, style) {
+        const item = this._labelLayout?.get(`${collection}:${entity.id}`);
+        if (!item) return;
+        const { rect } = item;
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.strokeStyle = `${style.color}99`;
+        ctx.lineWidth = 0.8 / this.view.scale;
+        ctx.fillRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+        ctx.strokeRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+        ctx.fillStyle = style.color;
+        ctx.font = `600 ${item.fontSize}px system-ui, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(item.text, item.textX, item.textY);
+        ctx.restore();
+    }
+
     _drawEntities(ctx, collection, entities) {
         const style = ENTITY_STYLES[collection];
         if (!style) return;
@@ -386,13 +663,19 @@ export class CanvasMapEditor {
         const fontSize = 10 / this.view.scale;
         entities.forEach((entity) => {
             const selected = this.selected?.collection === collection && this.selected?.id === entity.id;
+            const placement = selected ? this.validateEntityPlacement(collection, entity) : { valid: true };
+            const halfWidth = (Number(entity.width) || 16) / 2;
+            const halfHeight = (Number(entity.height) || 16) / 2;
             ctx.save();
             ctx.translate(entity.x, entity.y);
             ctx.lineWidth = (selected ? 3 : 1.5) / this.view.scale;
-            ctx.strokeStyle = selected ? '#06b6d4' : style.color;
+            ctx.strokeStyle = !placement.valid ? '#dc2626' : selected ? '#06b6d4' : style.color;
+            if (entity.pendingPlacement) ctx.setLineDash([4 / this.view.scale, 3 / this.view.scale]);
             ctx.fillStyle = style.fill;
             ctx.beginPath();
-            if (collection === 'blackBoxes') {
+            if (entity.shape === 'rectangle') {
+                ctx.rect(-halfWidth, -halfHeight, halfWidth * 2, halfHeight * 2);
+            } else if (collection === 'blackBoxes') {
                 ctx.rect(-radius, -radius, radius * 2, radius * 2);
             } else if (collection === 'gateways') {
                 ctx.moveTo(0, -radius);
@@ -410,16 +693,8 @@ export class CanvasMapEditor {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(style.glyph, 0, 0.5 / this.view.scale);
-            ctx.font = `600 ${9 / this.view.scale}px system-ui, sans-serif`;
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'bottom';
-            ctx.fillText(entity.label || entity.id, radius + 3 / this.view.scale, -radius);
-            if (entity.locked) {
-                ctx.fillStyle = '#dc2626';
-                ctx.font = `700 ${8 / this.view.scale}px system-ui, sans-serif`;
-                ctx.fillText('锁', radius + 3 / this.view.scale, radius + 2 / this.view.scale);
-            }
             ctx.restore();
+            this._drawEntityLabel(ctx, collection, entity, style);
         });
     }
 
@@ -664,6 +939,7 @@ export class CanvasMapEditor {
                     interaction.moved = true;
                     entity.x = next.x;
                     entity.y = next.y;
+                    if (SHAPE_FACILITIES.has(interaction.reference.collection)) entity.pendingPlacement = true;
                 }
             }, 'drag entity');
         } else if (interaction.kind === 'measure') {
@@ -684,6 +960,7 @@ export class CanvasMapEditor {
             this.store.endTransaction({ commit: !cancelled, reason: 'draw stroke' });
         } else if (interaction.kind === 'drag-entity') {
             this.store.endTransaction({ commit: !cancelled && interaction.moved, reason: 'drag entity' });
+            this.callbacks.onSelectionChange?.(this.getSelectedEntity(), interaction.reference);
             this.callbacks.onEntityDragEnd?.(this.getSelectedEntity(), interaction.reference);
         }
         this.render();
@@ -762,13 +1039,22 @@ export class CanvasMapEditor {
 
     _hitTestEntity(point) {
         const threshold = 14 / this.view.scale;
-        const collections = ['blackBoxes', 'gateways', 'doors', 'stairs', 'refuges', 'exits'];
+        const collections = ['blackBoxes', 'gateways', 'extinguishers', 'fireHydrants', 'elevators', 'doors', 'stairs', 'refuges', 'exits'];
         for (const collection of collections) {
             if (collection === 'blackBoxes' && !this.layers.blackBoxes) continue;
             if (collection !== 'blackBoxes' && !this.layers.semantic) continue;
             const entities = this.store.project.entities[collection] ?? [];
             for (let index = entities.length - 1; index >= 0; index -= 1) {
-                if (distance(point, entities[index]) <= threshold) return { collection, entity: entities[index] };
+                const entity = entities[index];
+                if (entity.shape === 'rectangle') {
+                    const halfWidth = (Number(entity.width) || 16) / 2 + threshold / 3;
+                    const halfHeight = (Number(entity.height) || 16) / 2 + threshold / 3;
+                    if (Math.abs(point.x - entity.x) <= halfWidth && Math.abs(point.y - entity.y) <= halfHeight) {
+                        return { collection, entity };
+                    }
+                } else if (distance(point, entity) <= threshold) {
+                    return { collection, entity };
+                }
             }
         }
         return null;
